@@ -1,0 +1,282 @@
+"use strict";
+((o,version)=>{
+    window.acceleratedData=window.acceleratedData || o;
+    if ((window.acceleratedData.version||0)>=version) return;
+    Object.keys(o).forEach(k=>!window.acceleratedData[k]&&(window.acceleratedData[k]=o[k]));
+    Object.assign(window.acceleratedData, {
+        version,
+        startTime:new Date().getTime(),
+        log: function() {
+            if (!arguments.length) return this.logs.forEach(l=>console.info(l));
+            let b={startTime: (new Date().getTime())-this.startTime, log: [...arguments]};
+            if ((typeof '' === typeof arguments[0]) && (this.data[arguments[0]]||{}).enable_DEBUG) console.log('%cXLR8D:\n', "font-size: 32px;",...b.log);
+            this.logs.push(b);
+        },
+        run: function(i) {return this.data[i]},
+        add: function(o) {
+            for (let i in o) {
+                if (!!this.data[i] && !!this.data[i].initOnce) continue;
+                o[i].__testName ??= i;
+                this.data[i]=Object.assign(this.template(i),o[i]);
+                try {this.inject(this.data[i].inject)} catch (e) {this.log(i,"Inject Error:\n", e)}
+                this.setBodyClass(i).catch(this.log.bind(this));
+                this.run(i).init(i);
+                window.dispatchEvent(new CustomEvent('xlr8d--init-'+i));
+            }
+        },
+        inject: function(o){typeof o===typeof {} && Object.keys(o).forEach(tag=>o[tag].forEach(k=>this.runAt(k.parentSelector||'head',([p])=>p.appendChild(Object.assign(document.createElement(tag),delete k.parentSelector,k)))))},
+        preserveClass: function(className,selector){
+            this.digest(`${selector}-${className}`).then(function(hash){
+                this.runAt(selector,function([target]){
+                    target.classList.toggle(className,true);
+                    if (!!this.tmp[`pC_${hash}`]) {this.tmp[`pC_${hash}`].disconnect(); delete this.tmp[`pC_${hash}`];}
+                    (this.tmp[`pC_${hash}`]=new MutationObserver(m=>m.forEach(m=>!(m.target.className.match(className)||'').length && m.target.classList.add(className)))).observe(target,{attributes:!0,attributeFilter:['class']});
+                    window.addEventListener('xlr8d--removePreservedClass-'+hash,function(){
+                        if (!!this.tmp[`pC_${hash}`]) {this.tmp[`pC_${hash}`].disconnect(); delete this.tmp[`pC_${hash}`];}
+                        try { target.classList.toggle(className,!1) } catch (e) { this.log(e) }
+                    }.bind(this),{once:!0});
+                }.bind(this));
+            }.bind(this)).catch(this.log.bind(this));
+        },
+        setBodyClass: async function(testName){
+            if (this.data[testName].disableBodyClassSetting) return;
+            try { document.body.classList.toggle(testName,true) } catch (e) { }
+            this.runAt('body', this.preserveClass.bind(this,testName,'body'));
+            let o=new MutationObserver(m=>!!m.find(m=>!![...m.addedNodes].find(el=>/^body$/i.test(el.nodeName))) && this.preserveClass(testName,'body'));
+            o.observe(document.documentElement,{childList:!0});
+            window.addEventListener('xlr8d--removeBodyClass-'+testName,function(){
+                o.disconnect();
+                this.digest(`body-${testName}`).then(hash=>window.dispatchEvent(new CustomEvent('xlr8d--removePreservedClass-'+hash))).catch(this.log.bind(this));
+            }.bind(this),{once:!0});
+        },
+        runAt: function(selector,callback,interval){
+            (async function(){
+                let b=(((window.Kameleoon||{}).API||{}).Core||{}).runWhenElementPresent;
+                if (!!b) {
+                    for (let i=0;i<20;i++) {if (!!document.body) break; await new Promise(r=>setTimeout(r,50))}
+                    return b(selector,callback,interval);
+                } else { for (let i=0;i<100;i++) {let c=document.querySelectorAll(selector);if (!!c.length) return callback([...c]);await new Promise(r=>setTimeout(r,interval||100));}this.log(`Selector "${selector}" wasn't found`); }
+            }.bind(this))().catch(this.log.bind(this));
+        }, 
+        runIf: function(condition,callback,interval){
+            (async function(){
+                if (!!window.Kameleoon) return Kameleoon.API.Core.runWhenConditionTrue(condition,callback,interval);
+                else { for (let i=0;i<200;i++) {if (!!condition()) return callback();await new Promise(r=>setTimeout(r,interval||100));}this.log(`Condition "${condition.valueOf()}" wasn't detected`); }
+            }.bind(this))().catch(this.log.bind(this));
+        },
+        digest: async string=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(string)))).map((b)=>b.toString(16).padStart(2,'0')).join(''),
+        uuidv4() {return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))},
+        getCookie(s) {return this.cookies().get(s)},
+        cookies() {return new Map((document.cookie||'').split(';').map(e=>e.trim().split('=')))},
+        redirect(url) {
+            try {window.Kameleoon.API.Core.processRedirect(url)}
+            catch(e) {window.location.assign(url)}
+        },
+        cache: async function(url,caheSuffix='',json=!0,opts){
+            if (!url) throw new Error(`no url provided`);
+            let b=await this.digest(url+caheSuffix);
+            let c=!!json?JSON.parse(window.sessionStorage.getItem(b)):window.sessionStorage.getItem(b);
+            if (!!c) return c;
+            let error;
+            c=await fetch(url,opts||{}).then(r=>r.ok? r[json?'json':'text']():Promise.reject()).catch(e=>(error=e));
+            if (!c) throw error||(new Error(`Can't get data from ${url}`));
+            if (!!json) c.__acc_cache_item=b;
+            window.sessionStorage.setItem(b,!!json?JSON.stringify(c):c);
+            return c;
+        },
+        async getIpLocation(permit=window.localStorage.getItem('accelerated-permit-ip-location')) {
+            if (!permit) throw new Error('[Warning] Location detection by IP not permitted.');
+            return this.cache('https://dbip.accdn.dev/get/ip/info');
+        },
+        sendAnalytics(data) {
+            if (!data || typeof data !== typeof {}) return this.log(`sendAnalytics: no data object provided as argument`);
+            let interval=200;
+            let destinations=new Map([
+                ['ga', ga=>{this.runIf(()=>!!window.ga, ()=>{
+                    let data = ga.find(i=>!!i&&(typeof i === typeof {})); if (!data) return;
+                    window.ga(`send`, data);
+                    let gaID = ga.find(i=>!!i&&(typeof i === typeof '')); if (!!gaID) {!Object.keys(window.gaData||{}).includes(gaID)&&window.ga('create', gaID, 'auto', gaID);window.ga(`${gaID}.send`, data);}
+                },interval);}],
+                ['gtag', gtag=>{this.runIf(()=>!!window.gtag,()=>window.gtag('event',...gtag),interval)}],
+                ['kameleoon', kameleoon=>{window.kameleoonQueue = window.kameleoonQueue || []; window.kameleoonQueue.push(()=>window.Kameleoon.API.Goals.processConversion(...kameleoon));}]
+            ]);
+            for ( let destination in data) (typeof data[destination] === typeof [])&&(destinations.get(destination)||this.log.bind(this,`sendAnalytics: no predifined destination found for "${destination}"`))(data[destination]);
+        },
+        cssVar: (o,v,p)=>(p||document.querySelector(`:root`)).style.setProperty(`${/^--\w/.test(o)?o:o.replace(/^-*/,'--')}`.toLowerCase(),v),
+        urlQuery() {return new Map(window.location.search.replace(/^\?/,"").split("&").filter(_=>!!_).map(i=>i.split("=")))},
+        async testFailed(__testName, error, { removeSelectors=[], unsetClasses=[], callback=(...a)=>a, removeBodyClass=!0 }={}) {
+            this.log(__testName, 'Test failed: ', error);
+            this.sendAnalytics({
+                gtag: ["acc_experiment_filter",{
+                    'acc_experiment_name': __testName,
+                    'acc_experiment_succeeded': !1
+                }]
+            });
+            removeSelectors.forEach(selector=>document.querySelectorAll(selector).forEach(el=>el.remove()));
+            unsetClasses.forEach(className=>document.querySelectorAll(`.${className}`).forEach(el=>el.classList.remove(className)));
+            !!removeBodyClass && window.dispatchEvent(new CustomEvent('xlr8d--removeBodyClass-'+__testName));
+            return callback(__testName, error);
+        },
+        throttle(fn, delay=150, runOnInit=!1, trailing=!0, leading=!0, ...initArgs) {
+            if (!trailing && !leading) return this.error('throttle: trailing and leading cannot both be false');
+            let $this = this;
+            let id;
+            let args;
+            let context;
+            const proc = ()=>{
+                if (!args) return id=null;
+                try {fn.apply(context, args)}
+                catch(e) {$this.error(e)}
+                args = null;
+                id = setTimeout(proc, delay);
+            };
+            let b = function(){
+                if (id) return args=arguments;
+                context = this;
+                try {leading?fn.apply(context, arguments):(args=arguments)}
+                catch(e) {$this.error(e)}
+                id=setTimeout(trailing?proc:b.clear, delay);
+            };
+            b.clear = ()=>{
+                args = null;
+                if (!id) return;
+                clearTimeout(id);
+                id = null;
+            };
+            if (runOnInit) try {b(...initArgs)} catch (e) {this.error(e)};
+            return b;
+        },
+        debounce(fn, delay=150, runOnInit=!1, ...initArgs) {
+            let $this = this;
+            let context;
+            let id;
+            let b = function () {
+                context = this;
+                id && clearTimeout(id);
+                id = setTimeout(()=>{
+                    id = null;
+                    try {fn.apply(context, arguments)}
+                    catch(e) {$this.error(e)}
+                }, delay);
+            };
+            b.clear = ()=>{
+                if (!id) return;
+                clearTimeout(id);
+                id = null;
+            };
+            if (runOnInit) try {b(...initArgs)} catch (e) {this.error(e)};
+            return b;
+        },
+        isWorker() {return /^web-pixel-/i.test(window.name) || (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope);},
+        async checkoutUIConfigUpload(url,body) {
+            if (!this.isWorker() || !url || !body) return;
+            return fetch(url,{
+                method: 'POST',
+                body
+            });
+        },
+        template: function(__testName) {
+            return {
+                __testName,
+                disableBodyClassSetting:!1,
+                initOnce: !0,
+                enable_DEBUG: !!(((window.Kameleoon||{}).Internals||{}).runtime||{}).simulationMode||!!window.localStorage.getItem('xlr8d--varify-preview'),
+                runAt: this.runAt.bind(window.acceleratedData),
+                runIf: this.runIf.bind(window.acceleratedData),
+                error: this.log.bind(window.acceleratedData, __testName),
+                log: this.log.bind(window.acceleratedData, __testName),
+                preserveClass: this.preserveClass.bind(window.acceleratedData),
+                injectElement: this.inject.bind(window.acceleratedData),
+                digest: this.digest,
+                uuidv4: this.uuidv4,
+                getCookie: this.getCookie.bind(window.acceleratedData),
+                redirect: this.redirect,
+                cache: this.cache,
+                cssVar: this.cssVar,
+                urlQuery: this.urlQuery,
+                sendAnalytics: this.sendAnalytics.bind(window.acceleratedData),
+                testFailed: this.testFailed.bind(window.acceleratedData, __testName),
+                throttle: this.throttle,
+                debounce: this.debounce
+            }
+        }
+    });
+    let c=window.acceleratedDataQueue || [];
+    window.acceleratedDataQueue=new Proxy([],{set(t, p, v) {
+        isNaN(+p)||(async ()=>window.acceleratedData.add(v))().catch(e=>window.acceleratedData.log('Test start Error:', e, v));
+        return Reflect.set(t,p,null);
+    }});
+    for (let b of c) window.acceleratedDataQueue.push(b);
+    
+    let a=window.acceleratedEventsQueue || [];
+    window.acceleratedEventsQueue=new Proxy([],{set(t, p, v) {
+        isNaN(+p)||(async ()=>{
+            if (typeof '' !== typeof v) throw new Error('incompatible value provided as an event name');
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push({"event": v});
+            window.kameleoonQueue = window.kameleoonQueue || [];
+            window.kameleoonQueue.push(["Kameleoon.API.Events.trigger", v]);
+			window.dispatchEvent(new CustomEvent("xlr8d--"+v.replace(/^xlr8d--/,'')));
+        })().catch(e=>window.acceleratedData.log('Event emitter Error:', e, v));
+        return Reflect.set(t,p,null);
+    }});
+    for (let b of a) window.acceleratedEventsQueue.push(b);
+
+    window.acceleratedData.tmp['xlr8d--checkout-ui-config-pending'] = window.acceleratedData.tmp['xlr8d--checkout-ui-config-pending'] || new Map();
+    window.acceleratedData.tmp['xlr8d--checkout-ui-config'] = window.acceleratedData.tmp['xlr8d--checkout-ui-config'] || new Map();
+    window.acceleratedCustomEventsHandler = window.acceleratedCustomEventsHandler || new Map();
+    window.acceleratedCustomEventsHandler = new Map([
+        ['xlr8d--checkout-ui-config-pending', (data={})=>{
+            let {experiment_id,config_url} = data;
+            if (!experiment_id || !config_url) return;
+            window.acceleratedData.tmp['xlr8d--checkout-ui-config-pending'].set(experiment_id,config_url);
+            let c = window.acceleratedData.tmp['xlr8d--checkout-ui-config'].get(experiment_id);
+            if (!c) return;
+            window.acceleratedData.checkoutUIConfigUpload(config_url,c).catch(e=>window.acceleratedData.log('Checkout UI Config Upload Error:', e, {experiment_id,config_url}));
+        }],
+        ...window.acceleratedCustomEventsHandler
+    ]);
+    (()=>{
+        let c = window.acceleratedCustomEventsQueue || [];
+        window.acceleratedCustomEventsQueue=new Proxy([],{set(t, p, v) {
+            isNaN(+p)||(async ()=>{
+                if (! v instanceof Array) throw new Error('incompatible value provided as an event');
+                let b = window.acceleratedCustomEventsHandler.get(v[0]);
+                if (b) b(v[1]);
+                window.dispatchEvent(new CustomEvent("xlr8d--"+v[0].replace(/^xlr8d--/,''), {detail: v[1]}));
+            })().catch(e=>window.acceleratedData.log('CustomEvent emitter Error:', e, v));
+            return Reflect.set(t,p,null);
+        }});
+        for (let b of c) window.acceleratedCustomEventsQueue.push(b);
+    })();
+    (()=>{
+        let c = window.acceleratedCheckoutUIConfigQueue || [];
+        window.acceleratedCheckoutUIConfigQueue=new Proxy([],{set(t, p, v) {
+            isNaN(+p)||(async ()=>{
+                if (!(v instanceof Array) || v.length !== 2 || v.some(_=>!_)) throw new Error('incompatible value provided as a config');
+                window.acceleratedData.tmp['xlr8d--checkout-ui-config'].set(...v);
+                let config_url = window.acceleratedData.tmp['xlr8d--checkout-ui-config-pending'].get(v[0]);
+                if (!config_url) return;
+                window.acceleratedData.checkoutUIConfigUpload(config_url,v[1]).catch(e=>window.acceleratedData.log('CheckoutUIConfigUpload Error:', e, {experiment_id: v[0], config_url}));
+            })().catch(e=>window.acceleratedData.log('CheckoutUIConfigQueue Error:', e, v));
+            return Reflect.set(t,p,null);
+        }});
+        for (let b of c) window.acceleratedCheckoutUIConfigQueue.push(b);
+    })();
+    window.acceleratedDataPreviewOnly = window.acceleratedDataPreviewOnly || [];
+    (async sessionStorageItem=>{
+        let c=[...window.acceleratedData.cookies().keys()].some(k=>{
+            if (!/^_ga_\w{1,}/i.test(k)) return !1;
+            return +((window.acceleratedData.cookies().get(k)||'').match(/^GS\d+(\.[^.]*){2}(\.|\$o)(?<sessions>\d+)/i)?.groups?.sessions || 0) > 1;
+        })? 'returned':'new';
+        window.sessionStorage.setItem(sessionStorageItem,c);
+        window.acceleratedEventsQueue.push(`${sessionStorageItem}-${c}`);
+    })(`xlr8d--user-is`).catch(e=>window.acceleratedData.log('New/Returned detect Error:', e));
+    if (!!(window.varify||{}).iid && (!!window.acceleratedData.urlQuery().get('xlr8d--varify-preview')||!!window.localStorage.getItem('xlr8d--varify-preview'))) (src=>document.head.appendChild(Object.assign(document.createElement('script'),{
+        type:'text/javascript',async:!0,defer:!0,src
+    })))(`https://media.accdn.dev/globalScript/_xlr8d_boilerplate/xlr8d-preview-widget.js`);
+    (async ()=>{
+        let b = document.querySelector('html[lang]')?.getAttribute('lang');
+        !b || window.localStorage.setItem('xlr8d--html-lang', b);
+    })().catch(window.acceleratedData.log);
+})({data:{},logs:[],tmp:{}}, 2025051501);

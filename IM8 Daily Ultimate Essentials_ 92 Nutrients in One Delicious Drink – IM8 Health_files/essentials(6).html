@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!-- saved from url=(0179)https://im8health.com/web-pixels@1d2a099fw23dfb22ep557258f5m7a2edbae/custom/web-pixel-155517095@3/sandbox/modern/products/essentials?variant=47315076022439&selling_plan=2948432039 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <title>IM8 Daily Ultimate Essentials: 92 Nutrients in One Delicious Drink – IM8 Health</title>
+    <script type="text/javascript" async="" defer="" src="./platform.js.download" gapi_processed="true"></script><script src="./s1d2a099fw23dfb22ep557258f5m7a2edbaem.js.download"></script>
+
+    <script type="text/javascript">
+  (function(shopify) {shopify.extend('WebPixel::Render', function(api) {
+var analytics=api.analytics,browser=api.browser,init=api.init;
+// Load Google Platform.js asynchronously
+(function() {
+  var po = document.createElement('script');
+  po.type = 'text/javascript';
+  po.async = true;
+  po.defer = true;
+  po.src = 'https://apis.google.com/js/platform.js?onload=renderOptIn';
+  var s = document.getElementsByTagName('script')[0];
+  s.parentNode.insertBefore(po, s);
+})();
+
+// Subscribe to Shopify checkout completion event
+analytics.subscribe("checkout_completed", event => {
+  var data = event.data;
+
+  // Extract order details
+  var orderId = data.checkout?.order_id || "";
+  var email = data.checkout?.email || "";
+  var country = data.checkout?.shipping_address?.country_code || "";
+
+  // Example delivery date = today + 7 days (adjust as needed)
+  var deliveryDate = new Date();
+  deliveryDate.setDate(deliveryDate.getDate() + 7);
+
+  // Render Google Customer Reviews survey opt-in
+  if (window.gapi && window.gapi.surveyoptin) {
+    window.gapi.surveyoptin.render({
+      "merchant_id": 5485956345,  // replace with your Google Merchant Center ID
+      "order_id": orderId,
+      "email": email,
+      "delivery_country": country,
+      "estimated_delivery_date": deliveryDate.toISOString().split('T')[0],
+      "products": (data.checkout?.line_items || []).map(item => ({
+        "gtin": item.variant?.barcode || ""
+      }))
+    });
+  }
+
+  // Debug log
+  console.log("✅ Google Survey Opt-in pixel fired", { orderId, email, country });
+});
+
+});})(self.webPixelsManager.createShopifyExtend('155517095', 'custom'));
+
+</script>
+
+  </head>
+  <body>
+
+</body></html>

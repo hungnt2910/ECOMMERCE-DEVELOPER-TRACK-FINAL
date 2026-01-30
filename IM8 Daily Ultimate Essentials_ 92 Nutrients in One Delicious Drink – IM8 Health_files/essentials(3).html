@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!-- saved from url=(0179)https://im8health.com/web-pixels@1d2a099fw23dfb22ep557258f5m7a2edbae/custom/web-pixel-140804263@1/sandbox/modern/products/essentials?variant=47315076022439&selling_plan=2948432039 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <title>IM8 Daily Ultimate Essentials: 92 Nutrients in One Delicious Drink – IM8 Health</title>
+    <script src="./s1d2a099fw23dfb22ep557258f5m7a2edbaem.js.download"></script>
+
+    <script type="text/javascript">
+  (function(shopify) {shopify.extend('WebPixel::Render', function(api) {
+var analytics=api.analytics,browser=api.browser,init=api.init;
+analytics.subscribe("checkout_completed", (event) => {
+  const checkout = event.data.checkout;
+  const orderId = checkout.order.id;
+  const orderTotal = checkout.totalPrice.amount;
+  const targetProductIds = ["8360959148199", "8360959180967", "8360959213735"];
+
+  const matchedItem = checkout.lineItems.find(item =>
+    targetProductIds.includes(item.variant.product.id)
+  );
+
+  if (matchedItem) {
+    const productId = matchedItem.variant.product.id;
+    const randomNumber = Math.floor(Math.random() * 1e10);
+
+    const img = document.createElement("img");
+    img.src = `https://trkn.us/pixel/conv/ppt=25250;g=purchase_confirmation;gid=63554;cid=${encodeURIComponent(orderId)};rev=${encodeURIComponent(orderTotal)};cv1=${encodeURIComponent(productId)};ord=${randomNumber}`;
+    img.height = 0;
+    img.width = 0;
+    img.border = 0;
+
+    document.body.appendChild(img);
+
+    console.log("Tracking pixel fired for order ID:", orderId, "Product ID:", productId);
+  } else {
+    console.log("No matching product ID found in the order. Pixel not fired.");
+  }
+});
+
+});})(self.webPixelsManager.createShopifyExtend('140804263', 'custom'));
+
+</script>
+
+  </head>
+  <body>
+
+</body></html>

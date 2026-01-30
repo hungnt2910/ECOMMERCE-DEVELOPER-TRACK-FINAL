@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<!-- saved from url=(0179)https://im8health.com/web-pixels@1d2a099fw23dfb22ep557258f5m7a2edbae/custom/web-pixel-57835687@65/sandbox/modern/products/essentials?variant=47315076022439&selling_plan=2948432039 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <title>IM8 Daily Ultimate Essentials: 92 Nutrients in One Delicious Drink – IM8 Health</title>
+    <script type="text/javascript" async="" src="./tune.js.download"></script><script src="./s1d2a099fw23dfb22ep557258f5m7a2edbaem.js.download"></script>
+
+    <script type="text/javascript">
+  (function(shopify) {shopify.extend('WebPixel::Render', function(api) {
+var analytics=api.analytics,browser=api.browser,init=api.init;
+!function(){var o=window.tdl=window.tdl||[];if(o.invoked)window.console&&console.error&&console.error("Tune snippet has been included more than once.");else{o.invoked=!0,o.methods=["init","identify","convert"],o.factory=function(n){return function(){var e=Array.prototype.slice.call(arguments);return e.unshift(n),o.push(e),o}};for(var e=0;e<o.methods.length;e++){var n=o.methods[e];o[n]=o.factory(n)}o.init=function(e){var n=document.createElement("script");n.type="text/javascript",n.async=!0,n.src="https://js.go2sdk.com/v2/tune.js";var t=document.getElementsByTagName("script")[0];t.parentNode.insertBefore(n,t),o.domain=e}}}();
+tdl.init("https://im8.go2cloud.org");
+
+if (typeof Currency === 'undefined') {
+  const script = document.createElement('script');
+  script.src = 'https://cdn.shopify.com/s/javascripts/currencies.js';
+  script.async = true;
+  document.head.appendChild(script);
+}
+
+analytics.subscribe("checkout_completed", (event) => {
+  const checkout = event.data.checkout;
+  const customerEmail = checkout.email;
+  const shopifyOrderId = checkout.order.id;
+  const country = checkout.localization.country.isoCode;
+
+  const allDiscountCodes = checkout.discountApplications.map((discount) => {
+    if (discount.type === 'DISCOUNT_CODE') {
+      return discount.title;
+    }
+  }).filter(Boolean);
+
+  const targetCurrencyCode = "USD";
+
+  function calculateNetAmount(checkout) {
+    let totalAmount = parseFloat(checkout.totalPrice.amount);
+    let shippingAmount = checkout.shippingLine ? parseFloat(checkout.shippingLine.price.amount) : 0;
+    let taxAmount = checkout.totalTax ? parseFloat(checkout.totalTax.amount) : 0;
+
+    let netAmount = totalAmount - shippingAmount - taxAmount;
+
+    if (checkout.totalPrice.currencyCode !== "USD") {
+      if (checkout.presentmentPrices && checkout.presentmentPrices.totalPrice) {
+        const usdPrice = checkout.presentmentPrices.totalPrice.find(price => price.currencyCode === "USD");
+        if (usdPrice) {
+          totalAmount = parseFloat(usdPrice.amount);
+          netAmount = totalAmount - shippingAmount - taxAmount;
+        }
+      } else if (typeof Currency !== 'undefined' && Currency.convert && Currency.rates) {
+        try {
+          const netAmountInCents = Math.round(netAmount * 100);
+          const convertedNetAmountInCents = Currency.convert(netAmountInCents, checkout.totalPrice.currencyCode, "USD");
+          netAmount = (convertedNetAmountInCents / 100);
+        } catch (e) {
+          console.error("Currency conversion error:", e);
+        }
+      }
+    }
+
+    return netAmount.toFixed(2);
+  }
+
+  const amountInUSD = calculateNetAmount(checkout);
+
+  if (allDiscountCodes.length > 0) {
+    let iframe = document.createElement("iframe"); 
+    iframe.src = `https://im8.go2cloud.org/aff_lsr?adv_id=1&promo_code=${encodeURIComponent(allDiscountCodes[0])}&amount=${encodeURIComponent(amountInUSD)}&country_code=${encodeURIComponent(country)}&adv_sub2=${encodeURIComponent(targetCurrencyCode)}&adv_sub=${encodeURIComponent(customerEmail)}&conversion_unique_id=${encodeURIComponent(shopifyOrderId)}&adv_unique1=${encodeURIComponent(shopifyOrderId)}`;
+    iframe.width = "100%";
+    iframe.height = "10px";
+    iframe.style.border = "none";
+    document.body.appendChild(iframe);  
+  } else {
+    tdl.convert({
+      conversion_unique_id: shopifyOrderId,
+      adv_id : 1,
+      adv_sub: customerEmail,
+      adv_sub2: targetCurrencyCode,
+      adv_unique1: shopifyOrderId,
+      promo_code: allDiscountCodes,    
+      amount: amountInUSD,
+      country_code: country,
+      currency: targetCurrencyCode
+    });
+  }
+
+  console.log("Original Amount:", checkout.totalPrice.amount, checkout.totalPrice.currencyCode);
+  console.log("Net USD Amount (without shipping/tax):", amountInUSD);
+});
+
+});})(self.webPixelsManager.createShopifyExtend('57835687', 'custom'));
+
+</script>
+
+  <script src="./currencies.js.download" async=""></script></head>
+  <body>
+
+</body></html>

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<!-- saved from url=(0179)https://im8health.com/web-pixels@1d2a099fw23dfb22ep557258f5m7a2edbae/custom/web-pixel-159416487@1/sandbox/modern/products/essentials?variant=47315076022439&selling_plan=2948432039 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <title>IM8 Daily Ultimate Essentials: 92 Nutrients in One Delicious Drink – IM8 Health</title>
+    <script async="" src="./pixel.min.js.download"></script><script src="./s1d2a099fw23dfb22ep557258f5m7a2edbaem.js.download"></script>
+
+    <script type="text/javascript">
+  (function(shopify) {shopify.extend('WebPixel::Render', function(api) {
+var analytics=api.analytics,browser=api.browser,init=api.init;
+// --- Initialize MAI Pixel (safe, non-blocking) ---
+(function (w, d, n) {
+  if (w.MAI) return;
+  w.MAI = {
+    q: [],
+    emit: function () {
+      (w.MAI.q = w.MAI.q || []).push(arguments);
+    },
+  };
+  const e = d.createElement(n);
+  e.async = true;
+  e.src = "https://cdn.mgln.ai/pixel.min.js";
+  const s = d.getElementsByTagName(n)[0];
+  s.parentNode.insertBefore(e, s);
+})(window, document, "script");
+
+// --- Configure your MAI project ID ---
+MAI.emit("conf", "0199e4cb2b23799e9912bdc610d80cc7");
+
+// --- Subscribe to Shopify checkout start event ---
+analytics.subscribe("checkout_started", (event) => {
+  try {
+    const checkout = event.data.checkout;
+
+    // --- Core checkout data ---
+    const total = Number(checkout.totalPrice?.amount || 0);
+    const currency = checkout.totalPrice?.currencyCode || "USD";
+
+    // --- Discount codes (if any) ---
+    const discountCode =
+      (checkout.discountApplications || [])
+        .map((d) => d.code)
+        .filter(Boolean)
+        .join(",") || null;
+
+    // --- Line items ---
+    const lineItems = (checkout.lineItems || []).map((item) => ({
+      quantity: item.quantity,
+      productId: item.product?.id || "",
+      productName: item.product?.title || "",
+      productType: item.product?.productType || "",
+      productVendor: item.product?.vendor || "",
+      variantId: item.variant?.id || "",
+      variantName: item.variant?.title || "",
+    }));
+
+    // --- Quantity total ---
+    const totalQuantity = lineItems.reduce((sum, i) => sum + i.quantity, 0);
+
+    // --- Emit checkout event to MAI (no order_id yet) ---
+    MAI.emit("checkout", total, currency, {
+      quantity: totalQuantity,
+      discountCode,
+      lineItems,
+    });
+  } catch (err) {
+    console.error("MAI checkout pixel error:", err);
+  }
+});
+
+});})(self.webPixelsManager.createShopifyExtend('159416487', 'custom'));
+
+</script>
+
+  </head>
+  <body>
+
+</body></html>

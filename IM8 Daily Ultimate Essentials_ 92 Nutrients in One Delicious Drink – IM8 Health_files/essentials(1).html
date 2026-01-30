@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<!-- saved from url=(0179)https://im8health.com/web-pixels@1d2a099fw23dfb22ep557258f5m7a2edbae/custom/web-pixel-57311399@26/sandbox/modern/products/essentials?variant=47315076022439&selling_plan=2948432039 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <title>IM8 Daily Ultimate Essentials: 92 Nutrients in One Delicious Drink – IM8 Health</title>
+    <script async="" src="./clarity.js.download"></script><script async="" src="./pixel.min.js.download"></script><script type="text/javascript" async="" src="./uwt.js.download"></script><script type="text/javascript" async="" src="./tune.js.download"></script><script type="text/javascript" async="" src="./tfa.js.download"></script><script type="text/javascript" async="" src="./p99tawsc3z"></script><script type="text/javascript" async="" src="./js"></script><script async="" src="./gtm.js.download"></script><script src="./s1d2a099fw23dfb22ep557258f5m7a2edbaem.js.download"></script>
+
+    <script type="text/javascript">
+  (function(shopify) {shopify.extend('WebPixel::Render', function(api) {
+var analytics=api.analytics,browser=api.browser,init=api.init;
+const __xlr8d_debug_delimiter = [64, "="];
+analytics.subscribe("xlr8d--debug-on",  () => {
+        console.log(" DEBUG ON ".padEnd(...__xlr8d_debug_delimiter));
+        window.sessionStorage.setItem("xlr8d--debug-on", 1);
+});
+analytics.subscribe("xlr8d--debug-off",  () => {
+        console.log(" DEBUG OFF ".padEnd(...__xlr8d_debug_delimiter));
+        window.sessionStorage.removeItem("xlr8d--debug-on");
+});
+analytics.subscribe("xlr8d--debug",  ({ customData = {} }) => {
+        if (!window.sessionStorage.getItem("xlr8d--debug-on")) return;
+        console.log(" DEBUG ".padEnd(...__xlr8d_debug_delimiter));
+        console.log(...customData.args);
+        console.log("".padEnd(...__xlr8d_debug_delimiter));
+});
+// console.log dataLayer,acceleratedData,window
+analytics.subscribe("xlr8d--console-log", () => console.log(window.dataLayer, window.acceleratedData, window));
+
+if (/\/web-pixel-\d.*\/checkouts\//.test(window.location.pathname)) {
+        // Conversion.io setup
+        window.codebase = window.codebase || {};
+        window.codebase.iid = '53B52C85B4E8'; // <<<< client specific Conversion.io ACCOUNT ID
+        document.head.appendChild(
+                Object.assign(document.createElement("script"), {
+                        type: "text/javascript",
+                        async: !0,
+                        src: "https://scripts.conversion.io/conversion.js",
+                }),
+        );
+        // Checkout A/B testing events
+        window.dataLayer = window.dataLayer || [];
+        analytics.subscribe("xlr8d--checkout-ui-config-pending", ({ customData = {} }) =>{
+        window.acceleratedCustomEventsQueue = window.acceleratedCustomEventsQueue || [];
+        window.acceleratedCustomEventsQueue.push(["xlr8d--checkout-ui-config-pending", customData]);
+    });
+        // Handle a confirmation from a widget, that it was displayed to a user
+        analytics.subscribe("xlr8d--displayed-test", ({ customData = {} }) =>{
+                const { experiment_id } = customData;
+                window.dataLayer.push({
+                        event: "acc_experiment_filter",
+                        acc_experiment_name: experiment_id,
+                        acc_experiment_succeeded: !0,
+                });
+        });
+}
+(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+            new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+        'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-TMH4DW97');
+
+window.dataLayer = window.dataLayer || [];
+
+analytics.subscribe("checkout_completed", event => { 
+  console.log('custom event - checkout completed', event);
+
+
+  
+  window.dataLayer.push({
+    event: "purchase",
+         ecommerce: {
+            currency: event.data.checkout.currencyCode,
+            value: event.data.checkout.totalPrice?.amount,
+            shipping: event.data.checkout.shippingLine ? event.data.checkout.shippingLine.price.amount  : 0,
+            tax:event.data.checkout.totalTax.amount / 100,
+            transaction_id: event.data.checkout.order ? event.data.checkout.order.id : event.data.checkout.token,
+            coupon: getDiscount(event.data.checkout),
+            items: getLineItemData(event.data.checkout)
+        },
+        fired_from: 'custom_pixel'
+    });
+
+    window.dataLayer.push({
+      event: "checkout_completed", 
+      order_id: event.data.checkout.order.id, 
+      price: event.data.checkout.totalPrice.amount,
+      promo_code: getDiscount(event.data.checkout),
+      fired_from: 'custom_pixel',
+    });
+
+   console.log({
+      event: "checkout_completed", 
+      order_id: event.data.checkout.order.id, 
+      price: event.data.checkout.totalPrice.amount,
+      promo_code: getDiscount(event.data.checkout),
+      fired_from: 'custom_pixel',
+    }, event);
+  
+});
+
+analytics.subscribe("checkout_started", event => {
+   
+  
+  window.dataLayer.push({
+    event: "begin_checkout",
+    ecommerce: {
+      currency: event.data.checkout.currencyCode,
+      value: event.data.checkout.totalPrice?.amount,
+      shipping: event.data.checkout.shippingLine ? event.data.checkout.shippingLine.price.amount : 0,
+      tax: event.data.checkout.totalTax.amount / 100,
+      transaction_id: event.data.checkout.order ? event.data.checkout.order.id : event.data.checkout.token,
+      coupon: getDiscount(event.data.checkout),
+      items: getLineItemData(event.data.checkout)
+    },
+    fired_from: 'custom_pixel',
+
+  });
+});
+
+
+analytics.subscribe('checkout_address_info_submitted', (event) => {
+ window.dataLayer.push({
+    event: "add_shipping_info",
+         ecommerce: {
+            currency: event.data.checkout.currencyCode,
+            value: event.data.checkout.totalPrice?.amount,
+            shipping: event.data.checkout.shippingLine ? event.data.checkout.shippingLine.price.amount  : 0,
+            tax:event.data.checkout.totalTax.amount / 100,
+            transaction_id: event.data.checkout.order ? event.data.checkout.order.id : event.data.checkout.token,
+            coupon: getDiscount(event.data.checkout),
+            items: getLineItemData(event.data.checkout)
+        },
+        fired_from: 'custom_pixel'
+    });
+});
+
+analytics.subscribe('payment_info_submitted', (event) => {
+ window.dataLayer.push({
+    event: "add_payment_info",
+         ecommerce: {
+            currency: event.data.checkout.currencyCode,
+            value: event.data.checkout.totalPrice?.amount,
+            shipping: event.data.checkout.shippingLine ? event.data.checkout.shippingLine.price.amount  : 0,
+            tax:event.data.checkout.totalTax.amount / 100,
+            transaction_id: event.data.checkout.order ? event.data.checkout.order.id : event.data.checkout.token,
+            coupon: getDiscount(event.data.checkout),
+            items: getLineItemData(event.data.checkout)
+        },
+        fired_from: 'custom_pixel'
+    });
+});
+
+
+analytics.subscribe("product_viewed", (event) => {
+  dataLayer.push({ ecommerce: null });
+  dataLayer.push({
+    event: "view_item",
+    url: event.context.document.location.href,
+    ecommerce: {
+      currency: event.data?.productVariant?.price?.currencyCode,
+      value: event.data?.productVariant?.price?.amount,
+      items: [
+      {
+        item_id: event.data?.productVariant?.product?.id,
+        item_name: event.data?.productVariant?.product?.title,
+        price: event.data?.productVariant?.price?.amount,
+        quantity: 1
+      }
+      ]
+    }
+  });
+});
+
+analytics.subscribe("page_viewed", (event) => {
+  window.dataLayer.push({
+    event: "shopify_page_view",
+    url: event.context.document.location.href
+  });
+});
+
+analytics.subscribe("product_added_to_cart", (event) => {
+  dataLayer.push({ ecommerce: null });
+  dataLayer.push({
+    event: "add_to_cart",
+    url: event.context.document.location.href,
+    ecommerce: {
+      currency: event.data?.cartLine?.cost?.totalAmount?.currencyCode,
+      value: event.data?.cartLine?.cost?.totalAmount?.amount,
+      items: [
+      {
+        item_id: event.data?.cartLine?.merchandise?.product?.id,
+        item_name: event.data?.cartLine?.merchandise?.product?.title,
+        price: event.data?.cartLine?.merchandise?.price?.amount,
+        quantity: event.data?.cartLine?.quantity
+      }
+      ]
+    }
+  });
+});
+
+
+analytics.subscribe("cart_viewed", (event) => {
+  dataLayer.push({ ecommerce: null });
+  const items = event.data?.cart?.lines?.map((item) => {
+    return {
+      item_id: item.merchandise.product.id,
+      item_name: item.merchandise.product.title,
+      price: item.merchandise.price.amount,
+      quantity: item.quantity
+    }
+  });
+  dataLayer.push({
+    event: "view_cart",
+    url: event.context.document.location.href,
+    ecommerce: {
+      currency: event.data?.cart?.cost?.totalAmount?.currencyCode,
+      value: event.data?.cart?.cost?.totalAmount?.amount,
+      items: items
+    }
+  });
+});
+
+analytics.subscribe("checkout_shipping_info_submitted", (event) => {
+  dataLayer.push({ ecommerce: null });
+  const items = event.data?.checkout?.lineItems?.map((item) => {
+    return {
+      item_id: item.variant.product.id,
+      item_name: item.variant.product.title,
+      price: item.variant.price.amount,
+      quantity: item.quantity
+    }
+  });
+  dataLayer.push({
+    event: "add_shipping_info",
+    url: event.context.document.location.href,
+    ecommerce: {
+      currency: event.data?.checkout?.currencyCode,
+      value: event.data?.checkout?.subtotalPrice?.amount,
+      items: items
+    }
+  });
+});
+});})(self.webPixelsManager.createShopifyExtend('57311399', 'custom'));
+
+</script>
+
+  </head>
+  <body>
+
+<script type="text/javascript" id="" charset="">!function(){var a=window.tdl=window.tdl||[];if(a.invoked)window.console&&console.error&&console.error("Tune snippet has been included more than once.");else{a.invoked=!0;a.methods=["init","identify","convert"];a.factory=function(c){return function(){var b=Array.prototype.slice.call(arguments);return b.unshift(c),a.push(b),a}};for(var d=0;d<a.methods.length;d++){var e=a.methods[d];a[e]=a.factory(e)}a.init=function(c){var b=document.createElement("script");b.type="text/javascript";b.async=!0;b.src=
+"https://js.go2sdk.com/v2/tune.js";var f=document.getElementsByTagName("script")[0];f.parentNode.insertBefore(b,f);a.domain=c}}}();tdl.init("https://im8.go2cloud.org");tdl.identify();</script>"<script type="text/javascript" id="" charset="">(function(a,b,d){if(!a.MAI){a.MAI=a.MAI||{emit:function(){(a.MAI.q=a.MAI.q||[]).push(arguments)}};var c=b.createElement(d);c.async=1;c.src="https://cdn.mgln.ai/pixel.min.js";b=b.getElementsByTagName(d)[0];b.parentNode.insertBefore(c,b)}})(window,document,"script");MAI.emit("conf","0199e4cb2b23799e9912bdc610d80cc7");MAI.emit("view");</script>"<img src="./adsct" height="1" width="1" style="display: none;"><img src="./adsct(1)" height="1" width="1" style="display: none;"></body></html>

@@ -1,0 +1,3245 @@
+window.codebase = window.codebase || {};
+var browser = (function () {
+  var userAgent =
+    (typeof navigator !== "undefined" && navigator.userAgent) || "";
+  var cachedResult = null;
+  function match(pattern, index = 1) {
+    var result = userAgent.match(pattern);
+    return (result && result.length > index && result[index]) || "";
+  }
+  const browserPatterns = [
+    { name: "Edge", key: "edge", regex: /edg([ea]|ios)\/(\d+(\.\d+)?)/i },
+    {
+      name: "Opera",
+      key: "opera",
+      regex: /(?:opera|opr|opios)[\/](\d+(\.\d+)?)/i,
+    },
+    {
+      name: "Chrome",
+      key: "chrome",
+      regex: /(?:chrome|crios|crmo)\/(\d+(\.\d+)?)/i,
+    },
+    { name: "Safari", key: "safari", regex: /version\/(\d+(\.\d+)?).*safari/i },
+    {
+      name: "Firefox",
+      key: "firefox",
+      regex: /(?:firefox|iceweasel|fxios)[\/](\d+(\.\d+)?)/i,
+    },
+    {
+      name: "Samsung Internet",
+      key: "samsungBrowser",
+      regex: /SamsungBrowser\/(\d+(\.\d+)?)/i,
+    },
+    {
+      name: "Internet Explorer",
+      key: "msie",
+      regex: /(?:msie |rv:)(\d+(\.\d+)?)/i,
+    },
+  ];
+  const osPatterns = [
+    { name: "Windows", key: "windows", regex: /windows nt (\d+\.\d+)/i },
+    { name: "MacOS", key: "mac", regex: /mac os x (\d+([_\.]\d+)?)/i },
+    { name: "Android", key: "android", regex: /android[ \/](\d+(\.\d+)?)/i },
+    { name: "iOS", key: "ios", regex: /os (\d+([_\.]\d+)*) like mac os x/i },
+  ];
+  function detectBrowser() {
+    if (cachedResult) return cachedResult;
+    for (let browser of browserPatterns) {
+      let version = match(browser.regex, 1);
+      if (version) {
+        cachedResult = { name: browser.name, version, [browser.key]: true };
+        return cachedResult;
+      }
+    }
+    cachedResult = { name: "Unknown", version: "0" };
+    return cachedResult;
+  }
+  function detectOS() {
+    for (let os of osPatterns) {
+      let version = match(os.regex, 1).replace(/_/g, ".");
+      if (version) {
+        return { name: os.name, version, [os.key]: true };
+      }
+    }
+    return { name: "Unknown", version: "0" };
+  }
+
+  function isModernBrowser(browser) {
+    const version = parseFloat(browser.version);
+    return (
+      (browser.chrome && version >= 20) ||
+      (browser.firefox && version >= 20) ||
+      (browser.safari && version >= 6) ||
+      (browser.edge && version >= 10) ||
+      (browser.opera && version >= 10)
+    );
+  }
+  function BrowserDetector() {
+    const browser = detectBrowser();
+    const os = detectOS();
+    return {
+      ...browser,
+      ...os,
+      modern: isModernBrowser(browser),
+    };
+  }
+  return BrowserDetector();
+})();
+(async function (w, d, c) {
+  "use strict";
+  // check if script is already present then return
+  if (typeof w.codebase === "object" && w.codebase.iid) {
+    // c.log("Conversion APP running");
+  } else {
+    c.log(
+      "%c Conversion APP is not running because iid is not set, please check the snippet or remove it from the page if you are not using it.",
+      "background: red; color: #fff; padding: 4px; border-radius: 4px;"
+    );
+    return;
+  }
+  if (window.codebase.scriptInitialized) {
+    console.log(
+      "%cConversion APP Script is already initialized",
+      "background: red; color: white; padding: 4px 8px; border-radius: 4px;"
+    );
+    return;
+  }
+  // generate random id for api call versionining
+  if (!w.codebase.apiCallId) {
+    w.codebase.apiCallId = Math.floor(Math.random() * 1000000);
+  }
+  let apiScriptUrl = new URL(document.currentScript.src).origin;
+  const apiUrl = apiScriptUrl.includes("conversion.io")
+    ? `${apiScriptUrl.replace("scripts", "api")}/api/v1`
+    : "https://codebase-ab-testing-server-nhnpr.ondigitalocean.app/api/v1";
+  async function loadData() {
+    if (!window.codebase.iid) return;
+    try {
+      const url = `${apiUrl}/test/${window.codebase.iid}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        return {
+          config: null,
+          data: null,
+        };
+      }
+      const data = await response.json();
+      const { config, ...rest } = data;
+      return {
+        config,
+        data: rest,
+      };
+    } catch (error) {
+      return {
+        config: null,
+        data: null,
+      };
+    }
+  }
+  const {
+    config = {
+      doNotTrackUser: false,
+      goalsEnabled: true,
+      isPreview: false,
+      liveEventListenersSet: false,
+      logDomain: "",
+      optedOut: false,
+      storage: "default",
+    },
+    data,
+  } = await loadData();
+  if (!data) {
+    c.error("Conversion App - Error loading data for:", window.codebase.iid);
+    return;
+  }
+  var Script = {
+    version: "1.0.0",
+    revision: 1,
+    tempEventStorage: [],
+    previewCombinations: [],
+    formerlyPushedGoals: [],
+    mutationObservers: [],
+    intersectionObservers: [],
+    pollIntvs: [],
+    activePages: [],
+    activeExperiments: {},
+    pingedGoals: [],
+    isReInited: false,
+    eventHandlers: {},
+    projectData: {},
+    ...config,
+    init: function (projectData) {
+      window.codebase.scriptInitialized = true;
+      const usedPageIds = new Set();
+      projectData.experiments.forEach((exp) => {
+        exp.pages.forEach((page) => usedPageIds.add(page.iid));
+      });
+      const pages = projectData.pages
+        .filter((page) => usedPageIds.has(page.iid))
+        .map((page) => {
+          // Add matching experiment IDs for the page
+          const relatedExperiments = projectData.experiments
+            .filter((exp) => exp.pages.some((p) => p.iid === page.iid))
+            .map((exp) => exp.iid);
+          const relatedGoals = projectData.goals
+            .filter((goal) => goal.pages.some((p) => p.iid === page.iid))
+            .map((goal) => goal.iid);
+          return {
+            ...page,
+            experiments: relatedExperiments,
+            goals: relatedGoals,
+          };
+        });
+
+      // const pages = projectData.pages.map((page) => {
+      //   const experiments = projectData.experiments
+      //     ?.filter((exp) => exp.pages?.filter((p) => p.iid === page.iid))
+      //     ?.map(({ iid }) => iid);
+      //   const goals = projectData.goals
+      //     ?.filter((goal) => goal.pages?.filter((p) => p.iid === page.iid))
+      //     ?.map(({ iid }) => iid);
+      //   return {
+      //     ...page,
+      //     experiments,
+      //     goals,
+      //   };
+      // });
+      this.projectData = {
+        ...projectData,
+        iid: window.codebase.iid,
+        pages,
+      };
+
+      this.handleEditor();
+      this.handleDebugMode();
+      this.handlePreview();
+      // this.handleAllPreview();
+      this.handleQaTool();
+      this.handleSetBucketing();
+      this.handleOptOut();
+      this.handleDoNotTrack();
+      if (System.logEnabled) {
+        const style1 =
+          "background-color: #009955; border: 2px solid #009955; color: white;";
+        c.groupCollapsed(
+          "%cConversion APP # Initiated SNIPPET with Revision",
+          style1,
+          this.revision
+        );
+        c.log("snippetVersion", this.version);
+        c.log("revision", this.revision);
+        c.log("goalsEnabled", this.goalsEnabled);
+        c.log("isPreview", this.isPreview);
+        c.log("optedOut", this.optedOut);
+        c.log("trackerUrl", this.logDomain);
+        // VB: changes cookie to localStorage
+        c.log("storage", Storage.getStorage("localStorage", true));
+        // VB: changes cookie to localStorage
+        c.groupEnd();
+      }
+    },
+    isNotABot: function () {
+      const isBot = /bot|google|crawler|spider|robot|crawling/i.test(
+        navigator.userAgent
+      );
+      isBot && System.log("info", 0, "Rated as Bot - Exiting");
+      return !isBot;
+    },
+    generalPrerequisitesMet: function (silent) {
+      if (!this.projectData.rules) return true;
+      const result = System.jsConditionReturnsTrue(this.projectData.rules);
+
+      if (!silent) {
+        System.log(
+          "info",
+          0,
+          `General Prerequisite Rules ${result ? "met" : "NOT met"}`
+        );
+      }
+
+      return result;
+    },
+    trackingPrerequisitesMet: function (silent) {
+      if (!this.projectData.rules_tracking) return true;
+      const result = System.jsConditionReturnsTrue(
+        this.projectData.rules_tracking
+      );
+
+      if (!silent) {
+        System.log(
+          "info",
+          0,
+          `Tracking Prerequisite Rules ${result ? "met" : "NOT met"}`
+        );
+      }
+
+      return result;
+    },
+    resetMutationObservers: function () {
+      this.mutationObservers.forEach((observer) => observer.disconnect());
+      this.mutationObservers = [];
+    },
+
+    resetIntersectionObservers: function () {
+      this.intersectionObservers.forEach((observer) => observer.disconnect());
+      this.intersectionObservers = [];
+    },
+
+    resetPollingIntervals: function () {
+      this.pollIntvs.forEach((interval) => clearInterval(interval));
+      this.pollIntvs = [];
+    },
+    run: function () {
+      User.init();
+      // Reset observers and intervals
+      [
+        "resetMutationObservers",
+        "resetIntersectionObservers",
+        "resetPollingIntervals",
+      ].forEach((method) => this[method]());
+      // Check prerequisites before proceeding
+      Project.runHelperJs();
+      Project.runDefaultJs();
+      if (!this.generalPrerequisitesMet() || !this.isNotABot()) return;
+      if (this.optedOut || this.doNotTrackUser) return;
+      // Handle tracking if prerequisites are met
+      if (this.trackingPrerequisitesMet()) this.handleTempEvents();
+      // Execute core logic
+      this.applyAntiFlicker();
+      this.main();
+      this.removeAntiFlicker();
+      this.fireHandler("lifecycleEnd");
+    },
+    handleTempEvents: function () {
+      var tempEvents = Script.tempEventStorage;
+      if (tempEvents.length) {
+        System.log("info", 1, "Previously saved events are sent", tempEvents);
+        tempEvents.forEach(function (event) {
+          EventQueue.add(event);
+        });
+      }
+    },
+    handleDebugMode: function () {
+      if (!this.projectData.debug) return;
+      if (this.projectData.restrict_debug) {
+        const urlParam = Tools.getUrlParameter(
+          System.urlParamPrefix + "show_debug"
+        );
+        const storageKey = System.storagePrefix + "show_debug";
+
+        if (urlParam) {
+          urlParam === "true"
+            ? Storage.set("sessionStorage", storageKey, "true", true)
+            : Storage.remove("sessionStorage", storageKey, true);
+        }
+
+        if (Storage.get("sessionStorage", storageKey, true) !== "true") return;
+      }
+      System.enableLog();
+    },
+    // handleAllPreview: function () {
+    //   const storageKey = System.storagePrefix + "preview_combs";
+    //   let previewCombinationFormUrlJson = Tools.getUrlParameter(
+    //     System.urlParamPrefix + "preview"
+    //   );
+    //   const exps = Script.projectData.experiments;
+    //   previewCombinationFormUrlJson = exps
+    //     .map((exp) => `${exp.iid}_${exp.variations[0].iid}`)
+    //     .join(",");
+    //   previewCombinationFormUrlJson =
+    //     "67a5c3e52841767bcd3d7150_67a5c40e2841767bcd3d7309,67a5c3e52841767bcd3d7151_67a5c40e2841767bcd3d7409";
+    //   if (previewCombinationFormUrlJson) {
+    //     if (!previewCombinationFormUrlJson.startsWith("[")) {
+    //       previewCombinationFormUrlJson = `["${previewCombinationFormUrlJson
+    //         .split(",")
+    //         .join('","')}"]`;
+    //     }
+    //     Storage.set(
+    //       "sessionStorage",
+    //       storageKey,
+    //       previewCombinationFormUrlJson,
+    //       true
+    //     );
+    //   }
+    //   try {
+    //     const previewCombinationsJson = Storage.get(
+    //       "sessionStorage",
+    //       storageKey,
+    //       true
+    //     );
+    //     this.previewCombinations = JSON.parse(previewCombinationsJson || "[]");
+    //     if (this.previewCombinations.length) {
+    //       this.setPreviewMode();
+    //     }
+    //   } catch (e) {
+    //     c.error("PREVIEW: Unable to parse the Preview Input");
+    //   }
+    // },
+    handlePreview: function () {
+      const storageKey = System.storagePrefix + "preview_combs";
+      let previewCombinationFormUrlJson = Tools.getUrlParameter(
+        System.urlParamPrefix + "preview"
+      );
+      if (previewCombinationFormUrlJson) {
+        if (!previewCombinationFormUrlJson.startsWith("[")) {
+          previewCombinationFormUrlJson = `["${previewCombinationFormUrlJson
+            .split(",")
+            .join('","')}"]`;
+        }
+        Storage.set(Script.storage, storageKey, previewCombinationFormUrlJson);
+      }
+      try {
+        const previewCombinationsJson = Storage.get(
+          Script.storage,
+          storageKey,
+          true
+        );
+        this.previewCombinations = JSON.parse(previewCombinationsJson || "[]");
+
+        if (this.previewCombinations.length) {
+          this.setPreviewMode();
+        }
+      } catch (e) {
+        c.error("PREVIEW: Unable to parse the Preview Input");
+      }
+    },
+    setEditorMode: function (editorToken) {
+      const eas = [
+        {
+          type: "js",
+          url: `${apiScriptUrl}/conversionassets/conversion-editor.js`,
+        },
+        {
+          type: "css",
+          url: `${apiScriptUrl}/conversionassets/conversion-editor.css`,
+        },
+      ];
+      eas.forEach((asset) => {
+        const loadMethod =
+          asset.type === "js" ? Tools.loadExternalJs : Tools.loadExternalCss;
+        loadMethod(asset.url);
+      });
+    },
+    handleMessage: function (event) {
+      const storageKey = System.storagePrefix + "editor";
+      const url = new URL(window.location.href);
+      const getTokenFromUrl = Tools.getUrlParameter(storageKey);
+      if (!System.allowedOrigins.includes(event.origin)) return;
+      const { type, token } = event.data;
+      if (type === "AUTH_TOKEN") {
+        if (token) {
+          Storage.set("sessionStorage", storageKey, token);
+          this.setEditorMode(token);
+          return;
+        }
+        url.searchParams.delete(storageKey);
+        window.history.replaceState({}, "", url);
+      }
+      // if (getTokenFromUrl) {
+      //   const fallbackToken =
+      //     getTokenFromUrl || Storage.get("sessionStorage", storageKey, true);
+      //   url.searchParams.delete(storageKey);
+      //   window.history.replaceState({}, "", url);
+      //   if (fallbackToken) this.setEditorMode(fallbackToken);
+      // }
+    },
+    handleEditor: function () {
+      const editorKey = System.storagePrefix + "editor";
+      const debugKey = System.urlParamPrefix + "debug";
+      const url = new URL(window.location.href);
+      const getTokenFromUrl = Tools.getUrlParameter(editorKey);
+      if (getTokenFromUrl) {
+        Storage.set("sessionStorage", editorKey, getTokenFromUrl, true);
+        Storage.remove(Script.storage, debugKey);
+        url.searchParams.delete(editorKey);
+        url.searchParams.delete(debugKey);
+        window.history.replaceState({}, "", url);
+      }
+      const editorToken = Storage.get("sessionStorage", editorKey, true);
+      if (editorToken) {
+        Storage.remove(Script.storage, debugKey);
+        this.setEditorMode(editorToken);
+        return;
+      }
+      window.addEventListener("message", this.handleMessage.bind(this));
+      // const storageKey = System.storagePrefix + "editor";
+      // const editorTokenFromUrl = Tools.getUrlParameter(
+      //   System.urlParamPrefix + "editor"
+      // );
+      // const editorToken = Storage.get("sessionStorage", storageKey, true);
+      // if (editorTokenFromUrl) {
+      //   Storage.set("sessionStorage", storageKey, editorTokenFromUrl, true);
+      //   setTimeout(() => {
+      //     const url = new URL(window.location.href);
+      //     url.searchParams.delete(storageKey);
+      //     window.history.replaceState({}, "", url);
+      //     if (editorTokenFromUrl) {
+      //       this.setEditorMode(editorTokenFromUrl);
+      //     }
+      //   }, 500);
+      // } else if (editorToken) {
+      //   this.setEditorMode(editorToken);
+      // }
+    },
+    handleQaTool: function () {
+      const storageKey = System.storagePrefix + "debug";
+      const qaTokenFromUrl = Tools.getUrlParameter(
+        System.urlParamPrefix + "debug"
+      );
+      if (qaTokenFromUrl) {
+        Storage.set(Script.storage, storageKey, qaTokenFromUrl);
+      }
+      const qaToken = Storage.get(Script.storage, storageKey);
+      if (qaToken) {
+        this.setQaMode(qaToken);
+      }
+    },
+    handleSetBucketing: function () {
+      const setBucketingFromUrl = Tools.getUrlParameter(
+        System.urlParamPrefix + "set_bucketing"
+      );
+
+      if (setBucketingFromUrl) {
+        try {
+          const bucketArr = JSON.parse(setBucketingFromUrl);
+          if (Array.isArray(bucketArr)) {
+            const bucketObj = bucketArr.reduce((acc, item) => {
+              const [key, value] = item.split("_");
+              acc[key] = value;
+              return acc;
+            }, {});
+            // console.log(bucketObj, "bucketObj");
+            Storage.set(
+              "cookie",
+              System.storagePrefix + "exps",
+              JSON.stringify(bucketObj)
+            );
+          }
+        } catch (e) {
+          console.error("Error parsing bucketing data:", e);
+        }
+      }
+    },
+    setPreviewMode: function () {
+      this.isPreview = true;
+      this.goalsEnabled = false;
+    },
+    setQaMode: function (qaToken) {
+      if (!qaToken || qaToken === undefined || qaToken === null) return;
+      Tools.domLoaded(() => {
+        const loadAssets = [
+          {
+            type: "js",
+            url: `${apiScriptUrl}/conversionassets/abtestingqatool.js`,
+          },
+          {
+            type: "css",
+            url: `${apiScriptUrl}/conversionassets/conversion-editor.css`,
+          },
+        ];
+        loadAssets.forEach((asset) => {
+          const loadMethod =
+            asset.type === "js" ? Tools.loadExternalJs : Tools.loadExternalCss;
+          loadMethod(asset.url);
+        });
+      });
+    },
+    getVariationsOfExperiment: function (experiment) {
+      return experiment.variations?.map((t) => {
+        return {
+          iid: t.iid,
+          name: t.name,
+          experiment: experiment.iid,
+        };
+      });
+    },
+    getVariationIdToPreviewByExperiment: function (experiment) {
+      if (!Script.isPreview) return false;
+      for (let previewCombination of this.previewCombinations) {
+        let [combinationExperimentId, combinationVariationId] =
+          previewCombination.split("_");
+
+        if (
+          combinationExperimentId === experiment.data.iid &&
+          experiment.variationIdExists(combinationVariationId)
+        ) {
+          if (!experiment.silent) {
+            System.log(
+              "info",
+              2,
+              "Starting Preview Mode",
+              combinationVariationId
+            );
+          }
+          this.setPreviewMode();
+          return combinationVariationId;
+        }
+
+        if (combinationExperimentId === experiment.data.iid) {
+          c.error(
+            `PREVIEW: Variation ${combinationVariationId} does not exist for Experiment ${combinationExperimentId}`
+          );
+        }
+      }
+
+      return false;
+    },
+    handleOptOut: function () {
+      const urlParam = Tools.getUrlParameter(System.urlParamPrefix + "opt_out");
+      const storageKey = System.storagePrefix + "opt_out";
+
+      if (urlParam) {
+        const actionMessage =
+          urlParam === "true"
+            ? "You have successfully opted out of Conversion APP for this domain."
+            : urlParam === "false"
+            ? "You have successfully opted in for Conversion APP for this domain."
+            : null;
+
+        if (actionMessage) {
+          urlParam === "true"
+            ? Storage.set("cookie", storageKey, "true")
+            : Storage.remove("cookie", storageKey);
+
+          alert(actionMessage);
+        }
+      }
+      this.optedOut = Storage.get("cookie", storageKey) === "true";
+    },
+    handleDoNotTrack: function () {
+      if (this.projectData.adhere_dnt && navigator.doNotTrack == 1) {
+        this.doNotTrackUser = true;
+      }
+    },
+    applyAntiFlicker: function () {
+      var _self = this;
+      if (!this.projectData.use_antiflicker) return;
+
+      const html = d.getElementsByTagName("HTML")[0];
+      html.style.visibility = "hidden";
+
+      setTimeout(this.removeAntiFlicker.bind(this), 2000);
+    },
+    removeAntiFlicker: function () {
+      if (!this.projectData.use_antiflicker) return;
+
+      const html = d.getElementsByTagName("HTML")[0];
+      html.style.visibility = "visible";
+    },
+    fireHandler: function (handler) {
+      Script.eventHandlers[handler]?.();
+    },
+    getProjectData: function () {
+      return this.projectData;
+    },
+    prepareEvent: function (senderObj, variationIdsContext) {
+      var eventObj = {
+        type: senderObj.data.type,
+      };
+      eventObj.value = 0;
+      if (senderObj.data.hasOwnProperty("value")) {
+        eventObj.value = senderObj.data.value;
+      }
+      if (senderObj.className === "goal") {
+        eventObj.goal = {};
+        eventObj.goal.iid = senderObj.data.iid;
+        eventObj.goal.variations = variationIdsContext;
+      }
+      return eventObj;
+    },
+    getExperimentsVariationIds: function () {
+      var activeVariationIds = [];
+      if (Project.hasOwnProperty("data")) {
+        Project.data.experiments.forEach(function (experiment) {
+          experiment.variations.forEach(function (variation) {
+            activeVariationIds.push(variation.iid);
+          });
+        });
+      }
+      return activeVariationIds;
+    },
+    getCleanedUserBucket: function () {
+      // console.log("GET CLEANED USER BUCKET", User.getExperimentsBucket());
+      var cleanedUserExperimentsBucket = User.getExperimentsBucket();
+      for (var index in cleanedUserExperimentsBucket) {
+        if (cleanedUserExperimentsBucket[index] === 0) {
+          delete cleanedUserExperimentsBucket[index];
+        }
+      }
+      var cleanedUserBucket = {};
+      var userVariationId = null;
+      var allVariationIds = this.getExperimentsVariationIds();
+      var userExperimentIds = Object.keys(cleanedUserExperimentsBucket);
+      for (var i = 0; i < userExperimentIds.length; i++) {
+        var userExperimentId = userExperimentIds[i];
+        var userVariationId = cleanedUserExperimentsBucket[userExperimentId];
+        if (allVariationIds.indexOf(userVariationId) > -1) {
+          cleanedUserBucket[userExperimentId] = userVariationId;
+        }
+      }
+      return cleanedUserBucket;
+    },
+    getCleanedUserBucketVariationIds: function () {
+      var cleanedUserBucket = this.getCleanedUserBucket();
+      var experimentIds = Object.keys(cleanedUserBucket);
+      var variationIds = [];
+      for (var i = 0; i < experimentIds.length; i++) {
+        variationIds.push(cleanedUserBucket[experimentIds[i]]);
+      }
+      return variationIds;
+    },
+    sendEvents: function (eventUser, events) {
+      var postObj = {
+        projectId: this.projectData.iid,
+        source: "codebase-snippet",
+        snippetVersion: this.version,
+        user: eventUser,
+        events: events,
+      };
+      var postUrl = this.logDomain;
+      if (postUrl && postUrl !== "") {
+        var request = new XMLHttpRequest();
+        request.open("POST", postUrl, true);
+        request.send(JSON.stringify(postObj));
+      }
+    },
+    processEvents: function (events) {
+      var client_id = Tools.getCookie("_ga");
+      var eventUser = {
+        experimentsBucket: this.getCleanedUserBucket(),
+        attributes: { ...User.attributes, client_id },
+      };
+      // console.log("EVENTS", eventUser);
+      if (Object.keys(eventUser.experimentsBucket).length === 0) {
+        // c.log("Conversion APP # Empty UserBucket, not sending");
+        EventQueue.clear();
+        return;
+      }
+      var integrationEvents = [];
+      var eventsToSend = [];
+      events.forEach(function (event) {
+        if (event.type === "integration") {
+          integrationEvents.push(event);
+        } else {
+          eventsToSend.push(event);
+        }
+      });
+      if (eventsToSend.length) {
+        this.sendEvents(eventUser, eventsToSend);
+      }
+      if (integrationEvents.length) {
+        integrationEvents.forEach(function (event) {
+          var experiment = new Experiment(
+            Script.getExperimentById(event.data.experimentId),
+            true
+          );
+          var variation = new Variation(event.data.variationId, true);
+          var integration = Script.getIntegrationByTypeAndId(
+            event.integration.type,
+            event.integration.iid
+          );
+          if (integration) {
+            integration.run(Project, experiment, variation);
+          }
+        });
+      }
+      EventQueue.removeEventsFromQueue(events);
+    },
+    getGoalByApiName: function (apiName) {
+      var goals = this.projectData.goals;
+      for (var i = 0; i < goals.length; i++) {
+        var goal = goals[i];
+        if (goal.api_name === apiName) {
+          return goal;
+        }
+      }
+      return false;
+    },
+    getGoalById: function (goalId) {
+      // goalId = parseInt(goalId);
+      var goals = this.projectData.goals;
+      for (var i = 0; i < goals.length; i++) {
+        var goal = goals[i];
+        if (goal.iid === goalId) {
+          return goal;
+        }
+      }
+      return false;
+    },
+    getPageByApiName: function (apiName) {
+      var pages = this.projectData.pages;
+      for (var i = 0; i < pages.length; i++) {
+        var page = pages[i];
+        if (page.api_name === apiName) {
+          return page;
+        }
+      }
+      return false;
+    },
+    getPageById: function (pageId) {
+      // pageId = parseInt(pageId);
+      var pages = this.projectData.pages;
+      for (var i = 0; i < pages.length; i++) {
+        var page = pages[i];
+        if (page.iid === pageId) {
+          return page;
+        }
+      }
+      return false;
+    },
+    getExperimentById: function (experimentId) {
+      // experimentId = parseInt(experimentId);
+      var experiments = this.projectData.experiments;
+      for (var i = 0; i < experiments.length; i++) {
+        var experiment = experiments[i];
+        if (experiment.iid === experimentId) {
+          return experiment;
+        }
+      }
+      return false;
+    },
+    getVariationById: function (variationId) {
+      var experiments = this.projectData.experiments;
+      for (var i = 0; i < experiments.length; i++) {
+        var variations = experiments[i].variations;
+        for (var j = 0; j < variations.length; j++) {
+          var variation = variations[j];
+          if (variation.iid === variationId) {
+            return variation;
+          }
+        }
+      }
+      return false;
+    },
+    getIntegrationByTypeAndId: function (type, id) {
+      var integrations = Script.projectData[type + "_integrations"];
+      for (var i = 0; i < integrations.length; i++) {
+        if (integrations[i].iid === id) {
+          return new Integration(integrations[i]);
+        }
+      }
+      return false;
+    },
+    carriesExperiment: function (experimentIdLookup) {
+      // experimentIdLookup = parseInt(experimentIdLookup);
+      var experiments = this.projectData.experiments;
+      for (var i = 0; i < experiments.length; i++) {
+        if (experiments[i].iid === experimentIdLookup) {
+          return true;
+        }
+      }
+      return false;
+    },
+    getActiveClickGoals: function () {
+      var goals = [];
+      for (var i = 0; i < Script.activePages.length; i++) {
+        var page = this.getPageById(Script.activePages[i]);
+        var goalIds = page.goals;
+        for (var ii = 0; ii < goalIds.length; ii++) {
+          var goal = this.getGoalById(goalIds[ii]);
+          if (goal.type === "click") {
+            goals.push(goal);
+          }
+        }
+      }
+      return goals;
+    },
+  };
+  var Storage = {
+    getStorage: function (defaultStorage, force) {
+      if (force) {
+        return defaultStorage;
+      }
+      if (Script.storage !== "default") {
+        return Script.storage;
+      }
+      if (defaultStorage === "default") {
+        return "localStorage";
+      }
+      return defaultStorage;
+    },
+    encode: function (e) {
+      return (e = Script.projectData.encode_storage_values
+        ? encodeURIComponent(e)
+        : e);
+    },
+    decode: function (e) {
+      return Script.projectData.encode_storage_values &&
+        "null" === (e = decodeURIComponent(e))
+        ? null
+        : e;
+    },
+    useTempStorage: function (key) {
+      return (
+        key !== "codebase_tracking_consent" &&
+        key !== "codebase_redirect" &&
+        !Script.trackingPrerequisitesMet(true)
+      );
+    },
+    set: function (storage, key, value, force, days) {
+      // console.log(storage, key, value, force, days, "set");
+      storage = this.getStorage(storage, force);
+      // console.log(storage, "store");
+      if (this.useTempStorage(key)) {
+        w["codebaseTempStorage"] = w["codebaseTempStorage"] || {};
+        w.codebaseTempStorage[storage] = w.codebaseTempStorage[storage] || {};
+        w.codebaseTempStorage[storage][key] = value;
+        return;
+      }
+      if (storage === "cookie") {
+        // console.log("setCookie line 891", key, value);
+        if (days) {
+          return Tools.setCookie(key, value, days);
+        }
+        return Tools.setCookie(key, value);
+      } else if (storage === "localStorage") {
+        return localStorage.setItem(key, value);
+      }
+      sessionStorage.setItem(key, value);
+    },
+    get: function (storage, key, force) {
+      storage = this.getStorage(storage, force);
+      if (this.useTempStorage(key)) {
+        if (
+          w.hasOwnProperty("codebaseTempStorage") &&
+          w.codebaseTempStorage.hasOwnProperty(storage) &&
+          w.codebaseTempStorage[storage].hasOwnProperty(key)
+        ) {
+          return w.codebaseTempStorage[storage][key];
+        }
+        return false;
+      }
+      if (storage === "cookie") {
+        return Tools.getCookie(key);
+      } else if (storage === "localStorage") {
+        return localStorage.getItem(key);
+      }
+      return sessionStorage.getItem(key);
+    },
+    remove: function (storage, key, force) {
+      storage = this.getStorage(storage, force);
+      if (storage === "cookie") {
+        return Tools.removeCookie(key);
+      } else if (storage === "localStorage") {
+        return localStorage.removeItem(key);
+      } else if (storage === "temp") {
+        delete w[key];
+      }
+      sessionStorage.removeItem(key);
+    },
+  };
+  var formerPushedCalls = [];
+  var Api = {
+    init: function () {
+      this.initEventsApi();
+      this.initQueuedEvents();
+      if (typeof w.CustomEvent === "function") {
+        var apiReadyEvent = new CustomEvent("ConversionAPPApiReady");
+        d.dispatchEvent(apiReadyEvent);
+      }
+    },
+    initQueuedEvents: function () {
+      (async () => {
+        const schedule = window.__codebaseQueue || [];
+        window.__codebaseQueue = new Proxy([], {
+          set(t, p, v) {
+            isNaN(+p) ||
+              (async () => window.codebase.push(v))().catch((e) => {
+                /* add some shadow error-logging */
+                // console.log("error", e);
+              });
+            return Reflect.set(t, p, null);
+          },
+        });
+        for (const event of schedule) {
+          window.codebase.push(event);
+        }
+      })().catch(() => {});
+    },
+    initEventsApi: function () {
+      w.codebase = {
+        iid: window.codebase.iid,
+        push: function (event) {
+          if (event.eventType === "custom" || event.eventType === "revenue") {
+            var goalData = Script.getGoalByApiName(event.eventName);
+            if (goalData) {
+              var goal = new Goal(goalData);
+              var value = 0;
+              if (event.hasOwnProperty("eventValue")) {
+                value = event.eventValue;
+              }
+              goal.trigger(value);
+            }
+          } else if (event.eventType === "forceVariation") {
+            System.forcedVariations[event.experimentId] = event.variationId;
+          } else if (event.eventType === "activatePage") {
+            var pageData = false;
+            if (event.hasOwnProperty("pageId")) {
+              pageData = Script.getPageById(event.pageId);
+            } else {
+              pageData = Script.getPageByApiName(event.pageApiName);
+            }
+            if (!pageData) {
+              System.log("error", 0, [
+                "API (activatePage)",
+                "Page (#" + event.pageId + ") is not available",
+              ]);
+              return;
+            }
+            var page = new Page(pageData, Project.data.iid);
+            page.run();
+          } else if (event.eventType === "deactivatePage") {
+            var pageData = false;
+            if (event.hasOwnProperty("pageId")) {
+              pageData = Script.getPageById(event.pageId);
+            } else {
+              pageData = Script.getPageByApiName(event.pageApiName);
+            }
+            if (!pageData) {
+              System.log("error", 0, [
+                "API (deactivatePage)",
+                "Page (#" + event.pageId + ") is not available",
+              ]);
+              return;
+            }
+            var page = new Page(pageData, Project.data.iid);
+            page.setInactive();
+          } else if (event.eventType === "addListener") {
+            if (event.listener.type === "lifecycleEnd") {
+              Script.eventHandlers["lifecycleEnd"] = event.listener.handler;
+            }
+          } else if (event.eventType === "enableTrackingConsent") {
+            var alreadySet = Storage.get(
+              Script.storage,
+              System.storagePrefix + "tracking_consent"
+            );
+            Storage.set(
+              Script.storage,
+              System.storagePrefix + "tracking_consent",
+              "1"
+            );
+            System.log("info", 0, ["enableTrackingConsent"]);
+            if (w.hasOwnProperty("codebaseTempStorage")) {
+              for (const [storage, entry] of Object.entries(
+                w.codebaseTempStorage
+              )) {
+                for (const [key, value] of Object.entries(entry)) {
+                  Storage.set(storage, key, value);
+                }
+              }
+            }
+            if (!alreadySet) {
+              w.codebase.reInit({
+                resetStates: true,
+              });
+            }
+          } else if (event.eventType === "disableTrackingConsent") {
+            Storage.set(
+              Script.storage,
+              System.storagePrefix + "tracking_consent",
+              "0"
+            );
+            System.log("info", 0, ["disableTrackingConsent"]);
+          }
+        },
+        get: function (type, argument) {
+          if (type === "tools") {
+            return Tools;
+          } else if (type === "storage") {
+            return Storage;
+          } else if (type === "activePageIds") {
+            return Script.activePages;
+          } else if (type === "activeExperimentIds") {
+            return Script.activeExperiments;
+          } else if (type === "pingedGoals") {
+            return Script.pingedGoals;
+          } else if (type === "pages") {
+            return Script.projectData.pages;
+          } else if (type === "experiments") {
+            return !argument
+              ? Script.projectData.experiments
+              : Script.getExperimentById(argument);
+          } else if (type === "apiUrl") {
+            return apiUrl;
+          } else if (type === "goals") {
+            return Script.projectData.goals;
+          } else if (type === "variationById" && argument) {
+            return Script.getVariationById(argument);
+          } else if (type === "variationsOfExperiment" && argument) {
+            return Script.getVariationsOfExperiment(argument);
+          } else if (type === "goalById" && argument) {
+            return Script.getGoalById(argument);
+          } else if (type === "trackingConsentEnabled") {
+            var val = Storage.get(
+              Script.storage,
+              System.storagePrefix + "tracking_consent"
+            );
+            if (val === "0") return false;
+            if (val === "1") return true;
+            return val;
+          } else if (type === "deviceType") {
+            return User.attributes.device_type;
+          } else if (type === "storagePrefix") {
+            return System.storagePrefix;
+          } else if (type === "debugKey") {
+            return System.urlParamPrefix + "debug";
+          } else if (type === "forceVariant" && argument) {
+            return System.forcedVariations[argument];
+          } else if (type === "storageKeyExps") {
+            return User.storageKeyExps;
+          } else if (type === "storageKeyExcludedExperiments") {
+            return User.storageKeyExcludedExperiments;
+          } else if (type === "storageType") {
+            return Storage.getStorage(Script.storage, false);
+          }
+          console.error('"' + type + '" is not known by API');
+        },
+        getTools: function () {
+          return Tools;
+        },
+        reInit: function (config) {
+          System.log("info", false, "Re-Initiated PROJECT");
+          Script.isReInited = true;
+          if (
+            config &&
+            config.hasOwnProperty("resetStates") &&
+            config.resetStates
+          ) {
+            Script.activePages = [];
+            Script.activeExperiments = {};
+            Script.pingedGoals = [];
+          }
+          if (Project.hasOwnProperty("data") && Project.data.is_spa) {
+            var userBucket = User.getExperimentsBucket();
+            if (Object.keys(userBucket).length) {
+              for (var experimentId in userBucket) {
+                var experiment = new Experiment(
+                  Script.getExperimentById(experimentId),
+                  true
+                );
+                experiment.init();
+              }
+            }
+          }
+          Script.run();
+        },
+      };
+    },
+    handleFormerlyPushedCalls: function () {
+      for (var i = 0; i < formerPushedCalls.length; i++) {
+        var pushedCall = formerPushedCalls[i];
+        if (pushedCall.eventType === "forceVariation") {
+          w.codebase.push(pushedCall);
+        } else {
+          Script.formerlyPushedGoals.push(pushedCall);
+        }
+      }
+    },
+  };
+  var System = {
+    urlParamPrefix: "codebase_",
+    storagePrefix: "codebase_",
+    allowedOrigins: [
+      "http://localhost:3000",
+      "https://accelerated.cc",
+      "https://app.conversion.io",
+    ],
+    logEnabled: false,
+    forcedVariations: {},
+    init: function () {},
+    enableLog: function () {
+      this.logEnabled = true;
+    },
+    log: function (type, nesting, message, argument) {
+      if (!this.logEnabled) {
+        return false;
+      }
+      var outputPrefix = "Conversion APP #";
+      var nestingStepChars = "----";
+      if (nesting === false) {
+        nestingStepChars = "";
+      }
+      var outputNestingSteps = nestingStepChars;
+      for (var i = 0; i < nesting; i++) {
+        outputNestingSteps += nestingStepChars;
+      }
+      if (!argument) {
+        argument = " ";
+      }
+      if (type === "info") {
+        const style1 =
+          "background-color: #009955; border: 2px solid #009955; color: white;";
+        const style2 = "color: #777;";
+        c.log(
+          "%c" +
+            outputPrefix +
+            "%c" +
+            outputNestingSteps +
+            " " +
+            message +
+            " " +
+            "Timestamp: " +
+            new Date().toISOString(),
+          style1,
+          style2,
+          argument
+        );
+      } else if (type === "attention") {
+        c.log(
+          "%c" + outputPrefix + "%c" + outputNestingSteps + " " + message,
+          "background-color: #00ff8d; border: 2px solid #00ff8d; color: #000;",
+          "color: #000;",
+          argument
+        );
+      } else if (type === "error") {
+        var senderObj = message[0];
+        if (typeof senderObj === "object") {
+          message =
+            "ERROR on " +
+            senderObj.className.toUpperCase() +
+            " " +
+            senderObj.data.iid +
+            ": " +
+            message[1];
+        } else {
+          message = "ERROR on " + senderObj + ": " + message[1];
+        }
+        c.error(outputPrefix + outputNestingSteps + message, argument);
+      }
+    },
+    evalJs: function (js) {
+      var codebaseTools = Tools;
+      w.codebaseIgnoreDomMutations = true;
+      if (js.includes(".conversionredirect(")) {
+        const match = js.match(/\.conversionredirect\(["'](.*?)["']\)/);
+        if (match) {
+          const url = codebaseTools.buildRedirectUrl(match[1]);
+          const urlParams = new URLSearchParams(url);
+          const codebaseEditor =
+            urlParams.get("codebase_editor") ||
+            sessionStorage.getItem("codebase_editor");
+          if (!codebaseEditor) {
+            codebaseTools.redirect(url);
+          }
+        }
+      } else {
+        eval(js);
+        setTimeout(function () {
+          w.codebaseIgnoreDomMutations = false;
+        }, 100);
+      }
+    },
+    applyJs: function (senderObj, silent) {
+      var js = senderObj.data.jscode;
+      var redirectUrl = senderObj.data.redirect_url;
+      if (redirectUrl) {
+        js = `\n.conversionredirect('${redirectUrl}')`;
+      }
+      if (!js || !js.length) {
+        return false;
+      }
+      if (!silent) {
+        System.log("info", 2, "Applying JS");
+      }
+      try {
+        System.evalJs(js);
+      } catch (err) {
+        System.log("error", 2, [senderObj, err.message]);
+      }
+    },
+    applyCustomJs: function (e) {
+      if (!e || !e.length) return;
+      System.log("info", 2, "Applying JS");
+      try {
+        System.evalJs(e);
+      } catch (e) {
+        System.log("error", 2, [e.message]);
+      }
+    },
+    applyResetJs: function (senderObj) {
+      var js = senderObj.data.reset_js;
+      if (!js || !js.length) {
+        return false;
+      }
+      System.log(
+        "info",
+        0,
+        "Applying RESET JS of " +
+          senderObj.className.toUpperCase() +
+          ' "' +
+          senderObj.data.name +
+          '"',
+        senderObj.data.iid
+      );
+      try {
+        System.evalJs(js);
+      } catch (err) {
+        System.log("error", 0, [err.message]);
+      }
+    },
+    applyCss: function (senderObj) {
+      var css = senderObj.data.csscode;
+      if (!css || !css.length) {
+        return false;
+      }
+      System.log("info", 2, "Applying CSS");
+      var h = d.head || d.getElementsByTagName("head")[0],
+        s = d.createElement("style");
+      //   s.type = "text/css";
+      s.className = "codebase-css";
+      s.dataset.codebaseCssType = senderObj.className;
+      s.dataset.codebaseCssTypeId = senderObj.data.iid;
+      if (
+        document.querySelector(
+          'style.codebase-css[data-codebase-css-type="' +
+            senderObj.className +
+            '"][data-codebase-css-type-id="' +
+            senderObj.data.iid +
+            '"]'
+        )
+      ) {
+        return;
+      }
+      if (s.styleSheet) {
+        s.styleSheet.cssText = css;
+      } else {
+        s.appendChild(d.createTextNode(css));
+      }
+      h.appendChild(s);
+    },
+    applyResetCss: function (senderObj) {
+      var styleElems = d.querySelectorAll(
+        'style.codebase-css[data-codebase-css-type="' +
+          senderObj.className +
+          '"][data-codebase-css-type-id="' +
+          senderObj.data.iid +
+          '"]'
+      );
+      styleElems.forEach(function (styleElem) {
+        styleElem.remove();
+      });
+    },
+    detachCss: function () {
+      var list = d.getElementsByClassName("codebase-css");
+      for (var i = list.length - 1; 0 <= i; i--) {
+        if (list[i] && list[i].parentElement) {
+          list[i].parentElement.removeChild(list[i]);
+        }
+      }
+    },
+    jsConditionReturnsTrue: function (expression, experimentId) {
+      if (expression === "null" || expression === "") {
+        return true;
+      }
+      var result = false;
+      try {
+        var codebaseTools = Tools;
+        var jsConditionFn = new Function(
+          "User",
+          "Tools",
+          "codebaseTools",
+          "experimentId",
+          expression
+        );
+        result = jsConditionFn(User, Tools, codebaseTools, experimentId);
+      } catch (err) {
+        System.log("error", 2, ["JS RULE", err.message]);
+      }
+      return result;
+    },
+    jsConditionReturnsTrueAsync: async function (expression, experimentId) {
+      if (!expression || expression === "null") {
+        return true;
+      }
+
+      try {
+        const codebaseTools = Tools;
+        const jsConditionFn = new Function(
+          "User",
+          "Tools",
+          "codebaseTools",
+          "experimentId",
+          expression
+        );
+
+        const result = jsConditionFn(User, Tools, codebaseTools, experimentId);
+
+        if (result instanceof Promise) {
+          const finalResult = await result;
+          return finalResult;
+        }
+        return !!result;
+      } catch (err) {
+        return false;
+      }
+    },
+    getCurrentUrl: function () {
+      return w.location.href;
+    },
+    parseUrl: function (url) {
+      var parser = d.createElement("a"),
+        searchObject = {},
+        queries,
+        split,
+        i;
+      parser.href = url;
+      queries = parser.search.replace("^?", "").split("&");
+      for (var i = 0; i < queries.length; i++) {
+        split = queries[i].split("=");
+        searchObject[split[0]] = split[1];
+      }
+      var pathname = parser.pathname;
+      if (pathname.substring(-1) === "/") {
+        pathname = pathname.substring(0, pathname.length - 1);
+      }
+      return {
+        protocol: parser.protocol,
+        host: parser.host,
+        hostname: parser.hostname,
+        port: parser.port,
+        pathname: pathname,
+        search: parser.search,
+        searchObject: searchObject,
+        hash: parser.hash,
+      };
+    },
+    addLiveEventListeners: function (selector, event, handler) {
+      if (Script.liveEventListenersSet) {
+        return false;
+      }
+      d.querySelector("html").addEventListener(
+        event,
+        function (evt) {
+          var target = evt.target;
+          while (target != null) {
+            var isMatch = target.matches
+              ? target.matches(selector)
+              : target.msMatchesSelector(selector);
+            if (isMatch) {
+              handler(target);
+              return;
+            }
+            target = target.parentElement;
+          }
+        },
+        true
+      );
+      Script.liveEventListenersSet = true;
+    },
+    isInteger: function (value) {
+      var x;
+      if (isNaN(value)) {
+        return false;
+      }
+      x = parseFloat(value);
+      return (x | 0) === x;
+    },
+  };
+  System.init();
+  var EventQueue = {
+    storageKey: System.storagePrefix + "queue",
+    batchSize: 10,
+    processingInterval: 1000,
+    isProcessing: false,
+
+    init: function () {
+      var _self = this;
+      Tools.domLoaded(function () {
+        if (w.codebaseEventQueueInterv) {
+          clearInterval(w.codebaseEventQueueInterv);
+        }
+        w.codebaseEventQueueInterv = setInterval(function () {
+          if (!_self.isProcessing) {
+            _self.process();
+          }
+        }, _self.processingInterval);
+      });
+      _self.cleanup();
+    },
+
+    add: function (event) {
+      if (!Script.trackingPrerequisitesMet(true)) {
+        Script.tempEventStorage.push(event);
+        return;
+      }
+
+      function createLockId() {
+        return Math.random().toString(36).substring(2, 15);
+      }
+
+      event.timestamp = Math.floor(Date.now() / 1000);
+      event.lockId = createLockId();
+      this.addItemToJson(event);
+    },
+
+    get: function () {
+      var sItem = Storage.get("cookie", this.storageKey);
+      return sItem ? JSON.parse(sItem) : [];
+    },
+
+    clear: function () {
+      this.updateStorage([]);
+    },
+
+    process: function () {
+      if (this.isProcessing) return false;
+      this.isProcessing = true;
+
+      try {
+        const allEvents = this.get();
+        if (!allEvents || allEvents.length === 0) return false;
+
+        const eventsToHandle = [];
+        const eventsUpdateSet = [];
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        let processedCount = 0;
+
+        for (
+          let i = 0;
+          i < allEvents.length && processedCount < this.batchSize;
+          ++i
+        ) {
+          const event = allEvents[i];
+          if (typeof event !== "object") continue;
+
+          let minDiffTimeSec = 0.5;
+
+          if (event.type === "bucketing") {
+            const variationId = event.value;
+            const variationToCheck = new Variation(variationId, true);
+            if (
+              variationToCheck.data !== false &&
+              variationToCheck.hasRedirect()
+            ) {
+              minDiffTimeSec = 2;
+            }
+          }
+
+          const triggeredTimeDiffSec = currentTimestamp - event.timestamp;
+
+          if (triggeredTimeDiffSec > minDiffTimeSec) {
+            if (!event.hasOwnProperty("locked")) {
+              event.locked = currentTimestamp;
+              eventsToHandle.push(event);
+              processedCount++;
+            } else {
+              const lockTimeDiffSec = currentTimestamp - event.locked;
+              if (lockTimeDiffSec >= minDiffTimeSec + 2) {
+                event.locked = currentTimestamp;
+                eventsToHandle.push(event);
+                processedCount++;
+              }
+            }
+          }
+
+          eventsUpdateSet.push(event);
+        }
+
+        this.updateStorage(eventsUpdateSet);
+
+        if (eventsToHandle.length > 0) {
+          Script.processEvents(eventsToHandle);
+        } else {
+          return false;
+        }
+      } finally {
+        this.isProcessing = false;
+      }
+    },
+    removeEventsFromQueue: function (events) {
+      var handledLockedIds = new Set(events.map((event) => event.lockId));
+      var allEvents = this.get();
+      var eventsUpdateSet = allEvents.filter(
+        (event) => !handledLockedIds.has(event.lockId)
+      );
+      this.updateStorage(eventsUpdateSet);
+    },
+
+    doesItemExist: function (events, event) {
+      return events.some((existingEvent) => {
+        if (typeof existingEvent !== "object") return false;
+        if (existingEvent.timestamp !== event.timestamp) return false;
+        if (existingEvent.type !== event.type) return false;
+
+        if (event.type === "bucketing") {
+          return existingEvent.value === event.value;
+        } else if (event.type === "integration") {
+          return (
+            existingEvent.integration.iid === event.integration.iid &&
+            existingEvent.data.variationId === event.data.variationId
+          );
+        } else {
+          return existingEvent.goal.iid === event.goal.iid;
+        }
+      });
+    },
+
+    addItemToJson: function (event) {
+      var events = this.get();
+      if (!this.doesItemExist(events, event)) {
+        events.push(event);
+        this.updateStorage(events);
+      }
+    },
+
+    updateStorage: function (events) {
+      if (!events || events.length === 0) {
+        Storage.remove("cookie", this.storageKey);
+        return;
+      }
+      var secsInDays = (1 / (24 * 60 * 60)) * 30;
+      Storage.set(
+        "cookie",
+        this.storageKey,
+        JSON.stringify(events),
+        false,
+        secsInDays
+      );
+    },
+
+    cleanup: function () {
+      var allEvents = this.get();
+      if (allEvents.length === 0) return false;
+
+      var currentTimestamp = Math.floor(Date.now() / 1000);
+      var eventsUpdateSet = allEvents.filter((event) => {
+        if (typeof event !== "object") return false;
+        return (
+          currentTimestamp - event.timestamp <= 3600 &&
+          currentTimestamp - event.locked <= 3600
+        );
+      });
+
+      this.updateStorage(eventsUpdateSet);
+    },
+  };
+  var Tools = {
+    maxCookieLifetime: 90,
+    customCookieDomain: "".length > 0 ? "" : null,
+    cookieCache: new Map(),
+    cookieCacheTimeout: 5000, // 5 seconds cache
+
+    init: function () {
+      this.updateCookieCache();
+    },
+
+    updateCookieCache: function () {
+      this.cookieCache.clear();
+      var cookies = document.cookie.split(";");
+      for (var i = 0; i < cookies.length; i++) {
+        var cookie = cookies[i].trim();
+        var eqPos = cookie.indexOf("=");
+        if (eqPos > 0) {
+          var name = cookie.substring(0, eqPos);
+          var value = cookie.substring(eqPos + 1);
+          this.cookieCache.set(name, {
+            value: value,
+            timestamp: Date.now(),
+          });
+        }
+      }
+    },
+
+    setCookie: function (name, value, days, ignoreDomain) {
+      days = typeof days !== "undefined" ? days : this.maxCookieLifetime;
+      ignoreDomain = typeof ignoreDomain !== "undefined" ? ignoreDomain : false;
+      var date = new Date();
+      date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+      var expires = date.toUTCString();
+      var rootDomain = this.getRootDomain();
+
+      var cookieToSet = `${name}=${value}; expires=${expires}; SameSite=Lax; path=/`;
+      if (rootDomain && rootDomain !== "only_current" && !ignoreDomain) {
+        cookieToSet += `;domain=${rootDomain}`;
+      }
+      document.cookie = cookieToSet;
+      // console.log("cookieToSet line 1641", cookieToSet);
+      this.cookieCache.set(name, {
+        value: value,
+        timestamp: Date.now(),
+      });
+    },
+    getCookie: function (name) {
+      var cached = this.cookieCache.get(name);
+      if (cached && Date.now() - cached.timestamp < this.cookieCacheTimeout) {
+        return cached.value;
+      }
+
+      this.updateCookieCache();
+      cached = this.cookieCache.get(name);
+      return cached ? cached.value : null;
+    },
+    removeCookie: function (name) {
+      var rootDomain = this.getRootDomain();
+      var cookieToRemove = `${name}=; SameSite=Lax; path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
+
+      document.cookie = cookieToRemove;
+      if (rootDomain) {
+        document.cookie = `${cookieToRemove} domain=${rootDomain};`;
+      }
+
+      this.cookieCache.delete(name);
+    },
+    parseUrl: function () {
+      var url = window.location.hostname;
+      if (url.indexOf(".") === -1) return false;
+
+      var regexParse = /([a-z\-0-9]{2,63})\.([a-z\.]{2,5})$/;
+      var urlParts = regexParse.exec(url);
+      if (!urlParts) return false;
+
+      return {
+        domain: urlParts[1],
+        tld: urlParts[2],
+        subdomain: url
+          .replace(urlParts[1] + "." + urlParts[2], "")
+          .slice(0, -1),
+      };
+    },
+    getRootDomain: function () {
+      if (this.customCookieDomain) return this.customCookieDomain;
+      var parsedUrl = this.parseUrl();
+      return parsedUrl ? "." + parsedUrl.domain + "." + parsedUrl.tld : false;
+    },
+    removeUrlParameter: function (name, url, removeKey = false) {
+      if (!url) {
+        url = window.location.href;
+      }
+      const urlParts = url.split("?");
+      if (urlParts.length < 2) return url;
+      const baseUrl = urlParts[0];
+      const query = urlParts[1];
+      const newQuery = query
+        .split("&")
+        .filter((param) => {
+          const [key] = param.split("=");
+          return removeKey ? key !== name : true;
+        })
+        .map((param) => {
+          if (!removeKey && param.startsWith(name + "=")) {
+            return name + "=";
+          }
+          return param;
+        })
+        .filter(Boolean)
+        .join("&");
+
+      return newQuery ? `${baseUrl}?${newQuery}` : baseUrl;
+    },
+    getUrlParameter: function (name, url) {
+      if (!url) {
+        url = w.location.href;
+      }
+      name = name.replace(/[[]]/g, "$&");
+      var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+        results = regex.exec(url);
+      if (!results) {
+        return null;
+      }
+      if (!results[2]) {
+        return "";
+      }
+      return decodeURIComponent(results[2].replace("+", " "));
+    },
+    poll: function (
+      pollingFn,
+      callbackFn,
+      callbackFnOnFail,
+      timeoutMs,
+      timeoutAfterDomReadyMs
+    ) {
+      if (!callbackFnOnFail) {
+        callbackFnOnFail = function () {};
+      }
+      if (!timeoutMs) {
+        timeoutMs = 10000;
+      }
+      if (!timeoutAfterDomReadyMs) {
+        timeoutAfterDomReadyMs = 2000;
+      }
+      var result = pollingFn();
+      if (result === true) {
+        callbackFn();
+        return true;
+      }
+      var i = setInterval(function () {
+        result = pollingFn();
+        if (result === true) {
+          clearInterval(i);
+          callbackFn();
+        }
+      }, 50);
+      Script.pollIntvs.push(i);
+      setTimeout(function () {
+        clearInterval(i);
+        callbackFnOnFail();
+      }, timeoutMs);
+      this.domLoaded(function () {
+        setTimeout(function () {
+          clearInterval(i);
+          callbackFnOnFail();
+        }, timeoutAfterDomReadyMs);
+      });
+    },
+    // poll: function (
+    //   pollingFn,
+    //   callbackFn,
+    //   callbackFnOnFail,
+    //   maxPollCount = 100,
+    //   intervalMs = 50
+    // ) {
+    //   if (!callbackFnOnFail) {
+    //     callbackFnOnFail = function () {};
+    //   }
+    //   let count = 0;
+    //   let result = pollingFn();
+    //   if (result === true) {
+    //     callbackFn();
+    //     return true;
+    //   }
+    //   const i = setInterval(function () {
+    //     result = pollingFn();
+    //     count++;
+    //     if (result === true) {
+    //       clearInterval(i);
+    //       callbackFn();
+    //     } else if (count >= maxPollCount) {
+    //       clearInterval(i);
+    //       callbackFnOnFail();
+    //     }
+    //   }, intervalMs);
+    //   Script.pollIntvs.push(i);
+    // },
+    // poll: function (pollingFn, callbackFn) {
+    //   let result = pollingFn();
+    //   if (result === true) {
+    //     callbackFn();
+    //     return true;
+    //   }
+    //   const i = setInterval(function () {
+    //     result = pollingFn();
+    //     if (result === true) {
+    //       clearInterval(i);
+    //       callbackFn();
+    //     }
+    //   }, 50);
+
+    //   Script.pollIntvs.push(i);
+    //   // setTimeout(function () {
+    //   //   clearInterval(i);
+    //   //   callbackFnOnFail();
+    //   // }, timeoutMs);
+    //   // this.domLoaded(function () {
+    //   //   setTimeout(function () {
+    //   //     clearInterval(i);
+    //   //     callbackFnOnFail();
+    //   //   }, timeoutAfterDomReadyMs);
+    //   // });
+    // },
+    buildRedirectUrl: function (newUrl, keepQueryParameters) {
+      function parseQueryStr(str) {
+        if (typeof str != "string" || str.length == 0) return false;
+        var s = str.split("&");
+        var s_length = s.length;
+        var bit,
+          query = {},
+          first,
+          second;
+        for (var i = 0; i < s_length; i++) {
+          bit = s[i].split("=");
+          first = decodeURIComponent(bit[0]);
+          if (first.length == 0) continue;
+          second = decodeURIComponent(bit[1]);
+          if (typeof query[first] == "undefined") query[first] = second;
+          else if (query[first] instanceof Array) query[first].push(second);
+          else query[first] = [query[first], second];
+        }
+        return query;
+      }
+      function buildQueryStr(queryObj) {
+        var queryStr = "";
+        if (Object.keys(queryObj).length > 0) {
+          queryStr = "?";
+        }
+        for (var key in queryObj) {
+          queryStr += key + "=" + queryObj[key] + "&";
+        }
+        return queryStr.slice(0, -1);
+      }
+      if (newUrl.charAt(0) === "?") {
+        newUrl =
+          w.location.protocol +
+          "//" +
+          w.location.hostname +
+          w.location.pathname +
+          newUrl;
+      }
+      var currentUrl = w.location.href;
+      var redirectUrl = newUrl;
+      if (keepQueryParameters) {
+        var currentUrlHash = "";
+        if (w.location.hash) {
+          currentUrlHash = w.location.hash;
+        }
+        var newUrlHash = "";
+        if (newUrl.indexOf("#") > -1) {
+          newUrlHash = newUrl.split("#");
+          newUrlHash = "#" + newUrlHash[1];
+        }
+        var redirectUrlHash = currentUrlHash;
+        if (newUrlHash.length > 0) {
+          redirectUrlHash = newUrlHash;
+        }
+        var currentQueryParameters = parseQueryStr(
+          w.location.search.replace("?", "")
+        );
+        var newUrlSplitted = newUrl.replace(newUrlHash, "").split("?");
+        var newUrlWithoutQuery = newUrlSplitted;
+        var newQueryParameters = false;
+        if (newUrlSplitted.length > 1) {
+          newUrlWithoutQuery = newUrlSplitted[0];
+          newQueryParameters = parseQueryStr(newUrlSplitted[1]);
+        }
+        var redirectQueryParameters = currentQueryParameters || {};
+        if (currentQueryParameters && newQueryParameters) {
+          for (var key in currentQueryParameters) {
+            if (currentQueryParameters.hasOwnProperty(key)) {
+              if (newQueryParameters.hasOwnProperty(key)) {
+                redirectQueryParameters[key] = newQueryParameters[key];
+                delete newQueryParameters[key];
+              }
+            }
+          }
+        }
+        if (newQueryParameters) {
+          for (var key in newQueryParameters) {
+            redirectQueryParameters[key] = newQueryParameters[key];
+          }
+        }
+        redirectUrl =
+          newUrlWithoutQuery +
+          buildQueryStr(redirectQueryParameters) +
+          redirectUrlHash;
+      }
+      return redirectUrl;
+    },
+    redirect: function (url, keepQueryParameters, preventLoops) {
+      if (typeof keepQueryParameters === "undefined") {
+        keepQueryParameters = true;
+      }
+      if (typeof preventLoops === "undefined") {
+        preventLoops = true;
+      }
+      var waitBetweenRedirectsInSecs = 2;
+      if (preventLoops === false) {
+        waitBetweenRedirectsInSecs = 0;
+      }
+      var redirectUrl = this.buildRedirectUrl(url, keepQueryParameters);
+      if (w.location.href === redirectUrl) {
+        return false;
+      }
+      var lastRedirect = Storage.get("sessionStorage", "codebase_redirect");
+      if (lastRedirect) {
+        var secsSinceLastRedirect = (Date.now() - lastRedirect) / 1000;
+        if (secsSinceLastRedirect < waitBetweenRedirectsInSecs) {
+          return false;
+        }
+      }
+      const dateNow = Date.now();
+      Storage.set("sessionStorage", "codebase_redirect", dateNow);
+      setTimeout(function () {
+        const urlObj = new URL(redirectUrl);
+        const params = new URLSearchParams(urlObj.search);
+        if (urlObj.host !== window.location.host) {
+          params.set("codebase_redirect", dateNow);
+          redirectUrl = redirectUrl.split("?")[0] + "?" + params.toString();
+        }
+        w.location.replace(redirectUrl);
+      }, 5);
+    },
+    domLoaded: function (callbackFn) {
+      var triggered = false;
+      if (d.readyState === "complete" || d.readyState === "interactive") {
+        if (!triggered) {
+          callbackFn();
+          triggered = true;
+        }
+      } else {
+        d.addEventListener("DOMContentLoaded", function () {
+          if (!triggered) {
+            callbackFn();
+            triggered = true;
+          }
+        });
+      }
+    },
+    domChanged: function (callbackFn) {
+      function subscriber(mutations) {
+        if (!w.codebaseIgnoreDomMutations) {
+          callbackFn();
+        }
+      }
+      this.waitForElement("body", function (bodyElem) {
+        var MutationObserver = w.MutationObserver || w.WebKitMutationObserver;
+        var observer;
+        if (!observer) {
+          observer = new MutationObserver(subscriber);
+          observer.observe(bodyElem, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+          });
+        }
+      });
+    },
+    waitForElement: function (selector, fn, additionalData) {
+      var handledElems = [];
+      function elementHandled(element) {
+        var i;
+        for (i = 0; i < handledElems.length; i++) {
+          if (handledElems[i].isSameNode(element)) {
+            return true;
+          }
+        }
+        return false;
+      }
+      var listeners = [],
+        MutationObserver = w.MutationObserver || w.WebKitMutationObserver,
+        observer;
+      listeners.push({
+        selector: selector,
+        fn: fn,
+      });
+      if (!observer) {
+        observer = new MutationObserver(check);
+        Script.mutationObservers.push(observer);
+        observer.observe(d.documentElement, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+        });
+      }
+      check();
+      function check() {
+        for (
+          var i = 0, len = listeners.length, listener, elements;
+          i < len;
+          i++
+        ) {
+          listener = listeners[i];
+          elements = d.querySelectorAll(listener.selector);
+          for (var j = 0, jLen = elements.length, element; j < jLen; j++) {
+            element = elements[j];
+            if (!elementHandled(element)) {
+              handledElems.push(element);
+              listener.fn.call(element, element, additionalData);
+            }
+          }
+        }
+      }
+    },
+    elementIsInView: function (selector, fn, persistentObserving) {
+      if (!("IntersectionObserver" in w)) {
+        System.log("error", 2, [
+          'Helper "elementIsInView"',
+          "IntersectionObserver is not supported",
+        ]);
+      }
+      var handledElems = [];
+      function elementHandled(element) {
+        var i;
+        for (i = 0; i < handledElems.length; i++) {
+          if (handledElems[i].isSameNode(element)) {
+            return true;
+          }
+        }
+        return false;
+      }
+      function startObserving() {
+        var observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              fn.call(entry.target, entry.target);
+              if (!persistentObserving) {
+                observer.unobserve(entry.target);
+              }
+            }
+          });
+        });
+        var elementsBySelector = d.querySelectorAll(selector);
+        for (var i = 0; i < elementsBySelector.length; ++i) {
+          var element = elementsBySelector[i];
+          if (!elementHandled(element)) {
+            handledElems.push(element);
+            observer.observe(element);
+          }
+        }
+        Script.intersectionObservers.push(observer);
+      }
+      this.domLoaded(function () {
+        startObserving();
+      });
+      this.domChanged(function () {
+        startObserving();
+      });
+    },
+    urlChanged: function (mode, callbackFn) {
+      if (mode === "polling") {
+        var oldUrl = w.location.href;
+        if (w.codebaseUrlChangeInterv) {
+          clearInterval(w.codebaseUrlChangeInterv);
+        }
+        w.codebaseUrlChangeInterv = setInterval(function () {
+          var currentUrl = w.location.href;
+          if (currentUrl != oldUrl) {
+            oldUrl = currentUrl;
+            callbackFn();
+          }
+        }, 10);
+      } else if (mode === "history") {
+        w.history.pushState = new Proxy(w.history.pushState, {
+          apply: (target, thisArg, argArray) => {
+            setTimeout(function () {
+              callbackFn();
+            }, 1);
+            return target.apply(thisArg, argArray);
+          },
+        });
+      }
+    },
+    getSetBucketingUrlExtension: function () {
+      var userBucket = User.getExperimentsBucket();
+      if (Object.keys(userBucket).length) {
+        var expVarArr = [];
+        for (var experimentId in userBucket) {
+          expVarArr.push(
+            '"' + experimentId + "_" + userBucket[experimentId] + '"'
+          );
+        }
+        return "[" + expVarArr.join(",") + "]";
+      }
+      return null;
+    },
+    loadExternalCss: function (url) {
+      var styleTag = d.createElement("link");
+      styleTag.media = "all";
+      styleTag.rel = "stylesheet";
+      styleTag.type = "text/css";
+      styleTag.href = url;
+      d.head.appendChild(styleTag);
+    },
+    loadExternalJs: function (url, callback) {
+      var scriptTag = d.createElement("script");
+      scriptTag.src = url;
+      scriptTag.onload = callback;
+      scriptTag.onreadystatechange = callback;
+      d.head.appendChild(scriptTag);
+    },
+    checkForDataLayerEntry: function (entrySpecs, callbackFn) {
+      var entryMatching = false;
+      this.poll(function () {
+        if (typeof w.dataLayer !== "undefined") {
+          for (var i = 0; i < w.dataLayer.length; i++) {
+            var currentEntry = w.dataLayer[i];
+            for (var ii = 0; ii < entrySpecs.length; ii++) {
+              var entrySpec = entrySpecs[ii];
+              if (currentEntry.hasOwnProperty(entrySpec[0])) {
+                if (currentEntry[entrySpec[0]] === entrySpec[1]) {
+                  entryMatching = true;
+                } else {
+                  entryMatching = false;
+                  break;
+                }
+              }
+            }
+            if (entryMatching) {
+              return true;
+            }
+          }
+        }
+      }, callbackFn);
+    },
+  };
+  Tools.init();
+
+  var User = {
+    storageKeyExps: System.storagePrefix + "exps",
+    storageKeyExcludedExperiments: System.storagePrefix + "excludedExperiments",
+    geoLocation: false,
+    attributes: {
+      device_type: "other",
+      visitor_type: "new",
+      url: "",
+    },
+    init: function () {
+      this.setVisits();
+      // console.log("VISITS");
+      // STEP 3
+      this.setBrowser();
+      // console.log("BROWSER");
+      // STEP 4
+      this.setGeoLocation();
+      // console.log("GEOLOCATION");
+      // STEP 5
+      this.setInitialAttributes();
+      // console.log("ATTRIBUTES");
+      // STEP 6
+    },
+    getExperimentsBucket() {
+      // VB: changes cookie to localStorage
+      const experimentsBucketStr = Storage.get(
+        Script.storage,
+        this.storageKeyExps
+      );
+      // VB: changes cookie to localStorage
+      return experimentsBucketStr ? JSON.parse(experimentsBucketStr) : {};
+    },
+    setExperimentToBucket(experimentId, variationId, forceUpdate = false) {
+      const experimentsBucket = this.getExperimentsBucket();
+      // console.log("experimentsBucket line 2182", experimentsBucket);
+      // console.log("experimentId line 2183", experimentId);
+      // console.log("variationId line 2184", variationId);
+      // console.log("forceUpdate line 2185", forceUpdate);
+      if (experimentId in experimentsBucket && !forceUpdate) return false;
+      experimentsBucket[experimentId] = variationId;
+      // VB: changes cookie to localStorage
+      Storage.set(
+        Script.storage,
+        this.storageKeyExps,
+        JSON.stringify(experimentsBucket)
+      );
+      // console.log("experimentsBucket line 2194", experimentsBucket);
+      // console.log("experimentId line 2195", experimentId);
+      // console.log("variationId line 2196", variationId);
+      // console.log("forceUpdate line 2197", forceUpdate);
+      // VB: changes cookie to localStorage
+      if (variationId !== 0) {
+        const bucketing = {
+          className: "bucketing",
+          data: { type: "bucketing", value: variationId },
+        };
+        System.log("info", 0, "Triggering BUCKETING Event", bucketing.data);
+        EventQueue.add(Script.prepareEvent(bucketing));
+      }
+    },
+    setVisits() {
+      if (!Script.generalPrerequisitesMet(true)) return;
+
+      const storageKeySessionCheck = `${System.storagePrefix}session_check`;
+      const storageKeyUvs = `${System.storagePrefix}uvs`;
+
+      if (Storage.get("cookie", storageKeyUvs) && Script.isReInited) return;
+
+      const unixNow = Math.floor(Date.now() / 1000);
+      let uvs = JSON.parse(Storage.get("cookie", storageKeyUvs)) || {
+        first: unixNow,
+        last: unixNow,
+        sessions: 1,
+        pageviews: 1,
+        pageviewsSession: 1,
+      };
+
+      uvs.last = unixNow;
+      if (!Storage.get("sessionStorage", storageKeySessionCheck, true)) {
+        uvs.sessions++;
+        uvs.pageviewsSession = 1;
+      } else {
+        uvs.pageviewsSession++;
+      }
+      uvs.pageviews++;
+
+      this.visits = uvs;
+
+      Storage.set("cookie", storageKeyUvs, JSON.stringify(uvs));
+      Storage.set("sessionStorage", storageKeySessionCheck, "1", true);
+    },
+    getVariationIdOfExperiment(experiment) {
+      const experimentId = experiment.data.iid;
+      const experimentBucket = this.getExperimentsBucket();
+      return experimentBucket[experimentId] || false;
+    },
+    setBrowser() {
+      this.browser = browser;
+      this.browser.desktop = !this.browser.mobile && !this.browser.tablet;
+    },
+    setGeoLocation: function () {},
+    setInitialAttributes: function () {
+      this.attributes.user_agent = w.navigator.userAgent;
+      if (User.hasOwnProperty("visits") && User.visits.sessions > 1) {
+        this.attributes.visitor_type = "returning";
+      }
+      if (this.browser.mobile) {
+        this.attributes.device_type = "mobile";
+      } else if (this.browser.tablet) {
+        this.attributes.device_type = "tablet";
+      } else if (this.browser.desktop) {
+        this.attributes.device_type = "desktop";
+      }
+    },
+  };
+  var Project = {
+    init: function (data) {
+      // console.log("PROJECT INIT", data);
+      this.className = "project";
+      this.data = data;
+      if (System.logEnabled) {
+        const style1 =
+          "background-color: #009955; border: 2px solid #009955; color: white;";
+        c.groupCollapsed(
+          '%cConversion APP # Initiated PROJECT "' + this.data.name + '"',
+          style1,
+          this.data.iid
+        );
+      }
+      this.runCodes();
+      if (System.logEnabled) {
+        c.groupEnd();
+      }
+    },
+    runCodes: function () {
+      System.detachCss();
+      System.applyJs(this);
+      System.applyCss(this);
+    },
+    runDefaultJs: function () {
+      System.applyCustomJs(Script.getProjectData().js);
+    },
+    runHelperJs: function () {
+      System.applyCustomJs(Script.getProjectData().helper_js);
+    },
+    runIntegrations: function (
+      experiment,
+      variation,
+      isNewBucketing,
+      redirectPageTargeting
+    ) {
+      var integrations = {
+        default: Script.projectData.default_integrations,
+        custom: Script.projectData.custom_integrations,
+      };
+      if (experiment?.data?.personalization) return;
+      const destinationRedirectUrl =
+        redirectPageTargeting?.filter(
+          (target) => target.url_type === "destination_redirect"
+        ) ?? [];
+      var lastRedirect = Storage.get("sessionStorage", "codebase_redirect");
+      const isBaseline = variation.data.baseline;
+      if (destinationRedirectUrl.length > 0 && !isBaseline && !lastRedirect) {
+        return;
+      }
+      for (var type in integrations) {
+        if (integrations.hasOwnProperty(type)) {
+          integrations[type].forEach(function (integrationData) {
+            var integration = new Integration(integrationData);
+            // Prepare the integration event object upfront
+            var integrationEvent = {
+              type: "integration",
+              integration: {
+                type: type,
+                iid: integration.data.iid,
+              },
+              data: {
+                experimentId: experiment.data.iid,
+                experimentName: experiment.data.name,
+                variationName: variation.data.name,
+                variationId: variation.data.iid,
+              },
+            };
+            // Determine if the integration should run directly or be queued
+            var runDirectly = true;
+            // Check if integration should run synchronously
+            if (
+              integration.data.run_synchronously ||
+              experiment.data.integrations_run_mode === "sync"
+            ) {
+              runDirectly = true;
+            }
+            // Handle 'userBucketed' hook case for new bucketing
+            if (
+              integration.data.used_hook === "userBucketed" &&
+              isNewBucketing
+            ) {
+              if (runDirectly) {
+                integration.run(Project, experiment, variation);
+              } else {
+                EventQueue.add(integrationEvent);
+              }
+            } else {
+              // Handle non-'userBucketed' hook or when bucketing is not new
+              if (runDirectly) {
+                integration.run(Project, experiment, variation);
+              } else {
+                EventQueue.add(integrationEvent);
+              }
+            }
+          });
+        }
+      }
+    },
+  };
+  class Experiment {
+    constructor(data, silent = false) {
+      this.className = "experiment";
+      this.data = data;
+      this.silent = silent;
+      this.variationId = false;
+      this.metadata = this.getMetadata();
+    }
+    init() {
+      if (!this.data) return false;
+      if (!this.silent && !this.shouldNotRun()) {
+        const additionalInfo = Script.isPreview ? " (Preview)" : "";
+        System.log(
+          "info",
+          1,
+          `Initiated EXPERIMENT ${
+            this.data.name
+          } (${this.data.status?.toUpperCase()}) ${additionalInfo}`
+          // this.data.iid
+        );
+      }
+      this.variationId = User.getVariationIdOfExperiment(this);
+      if (
+        this.variationId !== false &&
+        !this.variationIdExists(this.variationId)
+      )
+        return false;
+      if (Script.projectData.is_spa) this.reset();
+      if (Script.isPreview) {
+        const previewVariationId =
+          Script.getVariationIdToPreviewByExperiment(this);
+        if (previewVariationId) {
+          this.variationId = previewVariationId;
+        } else {
+          return false;
+        }
+      }
+      return true;
+    }
+    reset() {
+      delete Script.activeExperiments[this.data.iid];
+      System.applyResetJs(this);
+      System.applyResetCss(this);
+      // console.log("RESET", this.data.iid);
+      if (this.variationId) new Variation(this.variationId, true).reset();
+    }
+    getMetadata() {
+      return Object.fromEntries(
+        [...Array(3).keys()]
+          .map((i) => [
+            `metadata_key_exp_${i + 1}`,
+            this.data[`metadata_${i + 1}`] ?? "",
+          ])
+          .filter(([key]) => Project.data[key])
+      );
+    }
+    shouldNotRun() {
+      if (Script.isPreview) return false;
+      const exclusionKey = User.storageKeyExcludedExperiments;
+      const excludedExperiments = Storage.get(
+        "sessionStorage",
+        exclusionKey,
+        true
+      );
+      const excludedExperimentIds = excludedExperiments
+        ? JSON.parse(excludedExperiments)
+        : [];
+      // console.log(excludedExperimentIds, "excludedExperimentIds line 2432");
+      const storageKey = System.urlParamPrefix + "debug";
+      const debugToken = Storage.get(Script.storage, storageKey);
+      const checkExperiment = debugToken
+        ? debugToken.split("_").includes(this.data.iid)
+        : false;
+      return (
+        (this.data.qaMode && !checkExperiment) ||
+        excludedExperimentIds.includes(this.data.iid)
+      );
+    }
+    run() {
+      Script.activeExperiments[this.data.iid] = this.variationId;
+      System.applyJs(this);
+      System.applyCss(this);
+    }
+    environmentsPassed(silent) {
+      return (
+        this.data.environments.length === 0 ||
+        this.data.environments.some((env) =>
+          new Environment(env).matches(silent)
+        )
+      );
+    }
+    audiencesPassed(silent) {
+      if (this.data.audiences.length === 0) return true;
+      if (Script.isPreview)
+        return (
+          System.log("info", 3, "Skipping, because Preview Mode is active"),
+          true
+        );
+
+      return this.data.audiences_match_type === "any"
+        ? this.data.audiences.some((aud) =>
+            new Audience(aud, this.data.iid).rulesPassed(silent)
+          )
+        : this.data.audiences.every((aud) =>
+            new Audience(aud, this.data.iid).rulesPassed(silent)
+          );
+    }
+    async audiencesPassedAsync(silent) {
+      if (this.data.audiences.length === 0) return true;
+      if (Script.isPreview) {
+        System.log("info", 3, "Skipping, because Preview Mode is active");
+        return true;
+      }
+      if (this.data.audiences_match_type === "any") {
+        for (const aud of this.data.audiences) {
+          const passed = await new Audience(aud, this.data.iid).rulesPassed?.(
+            silent
+          );
+          if (passed) return true;
+        }
+        return false;
+      } else {
+        for (const aud of this.data.audiences) {
+          const passed = await new Audience(aud, this.data.iid).rulesPassed?.(
+            silent
+          );
+          if (!passed) return false;
+        }
+        return true;
+      }
+    }
+    trafficAllocationPassed() {
+      return Math.random() < this.data.traffic_allocation / 100;
+    }
+    chooseVariation() {
+      const forcedVariationId = System.forcedVariations[this.data.iid];
+      if (forcedVariationId) {
+        System.log("info", 1, "Forced Variation ID", forcedVariationId);
+        return forcedVariationId;
+      }
+      const varsDicerArr = this.data.variations.flatMap((varObj) =>
+        Array(varObj.traffic_allocation).fill(varObj.iid)
+      );
+
+      return varsDicerArr[Math.floor(Math.random() * varsDicerArr.length)];
+    }
+    getVariationData(variationId) {
+      return (
+        this.data.variations.find((varObj) => varObj.iid === variationId) ||
+        false
+      );
+    }
+    variationIdExists(variationIdSearch) {
+      return this.data.variations.some(
+        (varObj) => varObj.iid === variationIdSearch
+      );
+    }
+    passesExclusionGroups() {
+      if (!Project.data.exclusion_groups.length || Script.isPreview) {
+        if (Script.isPreview)
+          System.log(
+            "info",
+            2,
+            "Skipping EXCLUSION GROUP LOOKUP due to Previewing"
+          );
+        return true;
+      }
+      let passed = true;
+      Project.data.exclusion_groups.forEach((group) => {
+        System.log(
+          "info",
+          2,
+          `Initiated EXCLUSION GROUP LOOKUP "${group.name}"`,
+          group.iid
+        );
+        const groupExpIds = group.exclusion_group_entries.map(
+          (entry) => entry.experiment_id
+        );
+        if (!groupExpIds.includes(this.data.iid)) return;
+        const experimentsBucket = User.getExperimentsBucket();
+        let pickedExperimentId = Object.keys(experimentsBucket).find(
+          (expId) =>
+            groupExpIds.includes(expId) && Script.carriesExperiment(expId)
+        );
+        const matchingEntries = group.exclusion_group_entries.filter(
+          (entry) => {
+            const expToCheck = Script.getExperimentById(entry.experiment_id);
+            return (
+              expToCheck &&
+              new Experiment(expToCheck, true).audiencesPassed(true)
+            );
+          }
+        );
+        if (!pickedExperimentId) {
+          const diceArr = matchingEntries.flatMap((entry) =>
+            Array(entry.traffic).fill(entry.experiment_id)
+          );
+          pickedExperimentId =
+            diceArr[Math.floor(Math.random() * diceArr.length)];
+        }
+        if (pickedExperimentId !== this.data.iid) passed = false;
+      });
+
+      if (passed) System.log("info", 2, "EXCLUSION GROUP passed");
+      return passed;
+    }
+  }
+  class Variation {
+    constructor(variationId, silent = false) {
+      this.className = "variation";
+      this.data = Script.getVariationById(variationId);
+      this.metadata = this.getMetadata();
+      if (!silent) {
+        System.log(
+          "info",
+          2,
+          `Initiated VARIATION : "${this.data.name}" (${this.data.iid})`
+          // this.data.iid
+        );
+      }
+    }
+    getMetadata() {
+      const metadata = {};
+      for (let i = 1; i <= 3; i++) {
+        const key = Project.data[`metadata_key_var_${i}`];
+        if (!key) continue;
+        metadata[key] = this.data[`metadata_${i}`] ?? "";
+      }
+      return metadata;
+    }
+    run() {
+      // console.log("RUN", this.data.name);
+      this.runCodes();
+      this.runVisualChanges();
+    }
+    runCodes() {
+      System.applyJs(this);
+      System.applyCss(this);
+    }
+    reset() {
+      System.applyResetJs(this);
+      System.applyResetCss(this);
+    }
+    runVisualChanges() {
+      if (!this.data.changesets) return;
+      const changeSets = JSON.parse(this.data.changesets);
+      changeSets.forEach(({ selector, changes }) => {
+        const composedChanges = Object.entries(changes).flatMap(
+          ([attribute, value]) =>
+            typeof value === "object"
+              ? Object.entries(value).map(([property, val]) => ({
+                  attribute,
+                  property,
+                  value: val,
+                }))
+              : [{ attribute, property: "", value }]
+        );
+        Tools.waitForElement(selector, (elem) => {
+          composedChanges.forEach(({ attribute, property, value }) => {
+            if (
+              ["className", "href", "src", "innerHTML", "_id"].includes(
+                attribute
+              )
+            ) {
+              elem[attribute] = value;
+            } else if (attribute === "style") {
+              elem.style[property] = value;
+            } else if (attribute === "insertAdjacentHTML") {
+              elem.insertAdjacentHTML(property, `<div>${value}</div>`);
+            } else if (attribute === "insertAdjacentElement") {
+              Tools.waitForElement(value, (anchorElem) => {
+                anchorElem.insertAdjacentElement(property, elem);
+              });
+            }
+          });
+        });
+      });
+    }
+    hasRedirect() {
+      return (
+        (this.data.redirect_url !== "" && this.data.redirect_url !== null) ||
+        this.data.jscode.includes(".redirect(")
+      );
+    }
+  }
+  class Environment {
+    constructor(data) {
+      this.data = data;
+    }
+    matches(silent = false) {
+      const result = this.data.rules_js
+        ? System.jsConditionReturnsTrue(this.data.rules_js)
+        : true;
+
+      if (!silent && result) {
+        System.log(
+          "info",
+          3,
+          `ENVIRONMENT "${this.data.name}" is matching`
+          // this.data.iid
+        );
+      }
+
+      return result;
+    }
+  }
+  class Page {
+    constructor(data, experimentId) {
+      this.data = data;
+      this.experimentId = experimentId;
+    }
+    matches(silent = false, skipJsCheck = false) {
+      const currentUrl = System.getCurrentUrl();
+      const { urltargetings, rules_js } = this.data;
+      let resultUrls = urltargetings.length === 0;
+      let resultRules =
+        !skipJsCheck && rules_js
+          ? System.jsConditionReturnsTrue(rules_js, this.experimentId)
+          : true;
+
+      for (const urlTargetingData of urltargetings) {
+        const urlTargeting = new Urltargeting(urlTargetingData);
+        const urlMatch = urlTargeting.matches(currentUrl);
+
+        if (urlMatch === "included") {
+          resultUrls = true;
+        } else if (urlMatch) {
+          resultUrls = false;
+          break;
+        }
+      }
+
+      return resultUrls && resultRules;
+    }
+    isActive() {
+      return Script.activePages.includes(this.data.iid);
+    }
+    setActive() {
+      if (!this.isActive()) {
+        Script.activePages.push(this.data.iid);
+      }
+    }
+    setInactive() {
+      if (this.data.deactivation_mode === "persistent") {
+        System.log(
+          "info",
+          0,
+          `Not deactivating persistent PAGE "${this.data.name}"`,
+          this.data.iid
+        );
+        return;
+      }
+      const index = Script.activePages.indexOf(this.data.iid);
+      if (index !== -1) {
+        Script.activePages.splice(index, 1);
+        System.log(
+          "info",
+          0,
+          `Deactivated PAGE "${this.data.name}"`,
+          this.data.iid
+        );
+
+        if (this.data.deactivation_mode === "reset") {
+          this.data.experiments.forEach((expId) => {
+            new Experiment(Script.getExperimentById(expId), true).init();
+          });
+        }
+      }
+    }
+    run(skipJsCheck = false) {
+      if (this.isActive() && !this.matches(false)) {
+        this.setInactive();
+        return;
+      }
+      const timeoutMs = this.data.poll_on_rules ? 2000 : 0;
+      Tools.poll(
+        () => this.matches(false),
+        () => {
+          if (this.isActive()) {
+            System.log(
+              "info",
+              0,
+              `Ignoring triggered PAGE "${this.data.name}" because it is already active`,
+              this.data.iid
+            );
+            return;
+          }
+
+          this.setActive();
+          System.log(
+            "info",
+            0,
+            `Initiated PAGE "${this.data.name}"`,
+            this.data.iid
+          );
+          this.applyGoals();
+          this.data.experiments.forEach((expId) => {
+            const experiment = new Experiment(Script.getExperimentById(expId));
+            if (experiment.shouldNotRun()) return;
+            if (!experiment.init()) return;
+
+            System.log("info", 2, "Initiated ENVIRONMENTS LOOKUP");
+            Tools.poll(
+              () => experiment.environmentsPassed(),
+              () => {
+                System.log("info", 2, "Initiated AUDIENCES LOOKUP");
+                // Use a shared reference to hold the async result
+                const pollState = { audiencesPassed: false };
+                // Evaluate async condition
+                experiment.audiencesPassedAsync().then((result) => {
+                  // console.log(
+                  //   "result audiencesPassedAsync() line 2752",
+                  //   result
+                  // );
+                  pollState.audiencesPassed = result;
+                  Tools.poll(
+                    () => result === true,
+                    () => {
+                      Tools.poll(
+                        () => experiment.passesExclusionGroups(),
+                        () => {
+                          let isNewBucketing = false;
+                          const cId = Tools.getUrlParameter("cId");
+                          const forcedExperimentForPreview = cId
+                            ? cId.split("_")[0]
+                            : null;
+                          const forceVariationForPreview = cId
+                            ? cId.split("_")[1]
+                            : null;
+                          if (
+                            forcedExperimentForPreview &&
+                            forcedExperimentForPreview === experiment.data.iid
+                          ) {
+                            experiment.variationId = forceVariationForPreview;
+                            User.setExperimentToBucket(
+                              experiment.data.iid,
+                              experiment.variationId,
+                              true
+                            );
+                            isNewBucketing = true;
+                          }
+
+                          if (experiment.variationId === false) {
+                            if (!experiment.trafficAllocationPassed()) {
+                              experiment.variationId = 0;
+                            } else {
+                              experiment.variationId =
+                                experiment.chooseVariation();
+                              isNewBucketing = true;
+                            }
+                            User.setExperimentToBucket(
+                              experiment.data.iid,
+                              experiment.variationId
+                            );
+
+                            if (experiment.variationId === 0) return;
+                          }
+                          const redirectPageTargeting = Project.data.pages
+                            .filter((page) =>
+                              page.experiments.includes(experiment.data.iid)
+                            )
+                            ?.flatMap((page) => page.urltargetings);
+                          // ?.find(
+                          //   (urlTargeting) =>
+                          //     urlTargeting?.url_type ===
+                          //     "destination_redirect"
+                          // );
+                          const variation = new Variation(
+                            experiment.variationId,
+                            false
+                          );
+                          setTimeout(() => {
+                            Project.runIntegrations(
+                              experiment,
+                              variation,
+                              isNewBucketing,
+                              redirectPageTargeting
+                            );
+                          }, 1);
+                          experiment.run();
+                          variation.run();
+                          // const url = codebaseTools.buildRedirectUrl(
+                          //   redirectPageTargeting.url
+                          // );
+                          // console.log(url, "Line 2745");
+                          // const urlParams = new URLSearchParams(url);
+                          // const codebaseEditor =
+                          //   urlParams.get("codebase_editor") ||
+                          //   sessionStorage.getItem("codebase_editor");
+                          // if (!codebaseEditor) {
+                          //   codebaseTools.redirect(url);
+                          // }
+                        }
+                      );
+                    }
+                  );
+                });
+              }
+            );
+          });
+        },
+        () => {},
+        timeoutMs,
+        timeoutMs
+      );
+    }
+    applyGoals() {
+      Tools.domLoaded(() => {
+        setTimeout(() => {
+          this.data.goals.forEach((goalId) => {
+            const goal = new Goal(Script.getGoalById(goalId));
+            if (goal.data.type === "pageview") {
+              goal.trigger();
+            }
+          });
+        }, 500);
+      });
+    }
+  }
+  class Urltargeting {
+    constructor(data) {
+      this.data = data;
+    }
+    simplifyUrl(url) {
+      const urlParts = System.parseUrl(url);
+      return urlParts.host + urlParts.pathname;
+    }
+    removeLastSlash(url) {
+      return url.endsWith("/") ? url.slice(0, -1) : url;
+    }
+    removePreviewParams(url) {
+      const prParamName = System.urlParamPrefix + "preview";
+      const qaParamName = System.urlParamPrefix + "qa_token";
+      const paramsToRemove = [prParamName, qaParamName];
+      if (paramsToRemove.some((param) => Tools.getUrlParameter(param))) {
+        let urlObj = new URL(url);
+        let params = new URLSearchParams(urlObj.search);
+        paramsToRemove.forEach((param) => params.delete(param));
+        urlObj.search = params.toString();
+        url = urlObj.toString();
+      }
+      return url;
+    }
+    matches(currentUrl) {
+      const { type, url_type, url: setUrl } = this.data;
+      currentUrl = this.removePreviewParams(currentUrl);
+      let matchResult = false;
+
+      if (url_type === "simple") {
+        matchResult = this.simplifyUrl(currentUrl) === this.simplifyUrl(setUrl);
+      } else if (url_type === "exact") {
+        matchResult =
+          this.removeLastSlash(currentUrl) === this.removeLastSlash(setUrl);
+      } else if (url_type === "substring") {
+        matchResult = currentUrl.includes(setUrl);
+      } else if (url_type === "regex") {
+        matchResult = new RegExp(setUrl).test(currentUrl);
+      } else if (url_type === "destination_redirect") {
+        matchResult = currentUrl.includes(setUrl);
+      }
+
+      if (matchResult) {
+        return type === "include" ? "included" : "excluded";
+      }
+
+      return false;
+    }
+  }
+  class Audience {
+    constructor(data, experimentId) {
+      this.data = data;
+      this.experimentId = experimentId;
+    }
+    async rulesPassed(silent = false) {
+      const result = await System.jsConditionReturnsTrueAsync(
+        this.data.rules_js,
+        this.experimentId
+      );
+      if (!silent && result) {
+        System.log(
+          "info",
+          3,
+          `AUDIENCE "${this.data.name}" is matching`
+          // this.data.iid
+        );
+      }
+      return result;
+    }
+  }
+  var GoalStorage = {
+    storageKey: System.storagePrefix + "tgoals",
+    add: function (goal) {
+      var goalId = goal.data.iid;
+      var variationIds = Script.getCleanedUserBucketVariationIds();
+      var triggeredGoals = this.getAll();
+      if (!triggeredGoals.hasOwnProperty(goalId)) {
+        triggeredGoals[goalId] = variationIds;
+      } else {
+        variationIds.forEach(function (variationId) {
+          if (triggeredGoals[goalId].indexOf(variationId) === -1) {
+            triggeredGoals[goalId].push(variationId);
+          }
+        });
+      }
+      Storage.set(
+        "localStorage",
+        this.storageKey,
+        JSON.stringify(triggeredGoals)
+      );
+    },
+    getAll: function () {
+      var jsonObj = Storage.get("localStorage", this.storageKey);
+      if (!jsonObj) {
+        return {};
+      }
+      var tgoals = JSON.parse(jsonObj);
+      return tgoals;
+    },
+    getUntriggeredVariationIds: function (goal) {
+      var goalId = goal.data.iid;
+      var cleanedUserBucket = Script.getCleanedUserBucket();
+      var experimentIds = Object.keys(cleanedUserBucket);
+      var variationIds = [];
+      for (var i = 0; i < experimentIds.length; i++) {
+        variationIds.push(cleanedUserBucket[experimentIds[i]]);
+      }
+      var triggeredGoals = this.getAll();
+      if (!triggeredGoals.hasOwnProperty(goalId)) {
+        return variationIds;
+      } else {
+        var untriggeredVariationIds = [];
+        for (var j = 0; j < variationIds.length; j++) {
+          var variationId = variationIds[j];
+          if (triggeredGoals[goalId].indexOf(variationId) === -1) {
+            untriggeredVariationIds.push(variationId);
+          }
+        }
+        return untriggeredVariationIds;
+      }
+      return [];
+    },
+  };
+  class Goal {
+    constructor(data) {
+      this.className = "goal";
+      this.data = data;
+    }
+    trigger(value) {
+      if (value) {
+        this.data.value = value;
+      }
+      Script.pingedGoals.push({
+        _id: this.data.iid,
+        time: Date.now(),
+        value: value || null,
+      });
+      if (!Script.goalsEnabled) {
+        return false;
+      }
+      System.log(
+        "info",
+        0,
+        `Triggered GOAL "${this.data.name}" (${this.data.type})`,
+        this.data.iid
+      );
+      if (this.data.counting_method === "one") {
+        const untriggeredVariationIds =
+          GoalStorage.getUntriggeredVariationIds(this);
+        if (untriggeredVariationIds.length) {
+          this.send();
+        }
+      } else {
+        this.send();
+      }
+      GoalStorage.add(this);
+    }
+    send() {
+      let variationIdsContext = Script.getCleanedUserBucketVariationIds();
+      if (this.data.counting_method === "one") {
+        variationIdsContext = GoalStorage.getUntriggeredVariationIds(this);
+      }
+      EventQueue.add(Script.prepareEvent(this, variationIdsContext));
+    }
+  }
+  class Integration {
+    constructor(data) {
+      this.className = "integration";
+      this.data = data;
+    }
+    runCode(project, experiment, variation) {
+      const { jscode } = this.data;
+      const projectId = project.data.iid;
+      const projectName = project.data.name;
+      const experimentId = experiment.data.iid;
+      const experimentName = experiment.data.name;
+      const variationId = variation.data.iid;
+      const variationName = variation.data.name;
+      let evalResult = false;
+      try {
+        eval(jscode);
+        evalResult = "done";
+      } catch (err) {
+        evalResult = err.message;
+      }
+      return evalResult;
+    }
+    run(project, experiment, variation) {
+      if (!Script.goalsEnabled) {
+        System.log(
+          "info",
+          1,
+          "Skipping INTEGRATION because goals are disabled"
+        );
+        return false;
+      }
+      if (experiment.data.personalization) {
+        System.log(
+          "info",
+          1,
+          "Skipping INTEGRATION because experiment is personalization."
+        );
+        return false;
+      }
+      if (experiment.data.qaMode) {
+        System.log(
+          "info",
+          1,
+          "Skipping INTEGRATION because experiment is QA mode."
+        );
+        return false;
+      }
+      let intervCount = 0;
+      const intervMax = 20;
+      const intervalName = `integrationJsInterval_${this.data.name.replace(
+        /[^A-Za-z0-9]/g,
+        ""
+      )}_${experiment.data.iid}`;
+      System.log("info", 1, intervalName, "Interval Name");
+      Tools.domLoaded(() => {
+        if (w[intervalName]) {
+          System.log("info", 1, "Clearing interval", intervalName);
+          clearInterval(w[intervalName]);
+          return;
+        }
+        w[intervalName] = setInterval(() => {
+          System.log(
+            "info",
+            1,
+            "Running INTEGRATION",
+            intervalName,
+            this.data.name
+          );
+          const result = this.runCode(project, experiment, variation);
+          if (result === "done" || intervCount >= intervMax) {
+            System.log("info", 1, "Clearing interval", intervalName);
+            clearInterval(w[intervalName]);
+            if (result !== "done") {
+              System.log("error", 2, [this, result]);
+            }
+          }
+          intervCount++;
+        }, 100);
+        // Run once immediately after DOM is loaded
+        if (this.runCode(project, experiment, variation) === "done") {
+          clearInterval(w[intervalName]);
+        }
+      });
+    }
+  }
+  Api.init();
+  Script.init({
+    ...data,
+  });
+  EventQueue.init();
+  Api.handleFormerlyPushedCalls();
+  Script.main = function () {
+    Project.init(Script.getProjectData());
+    d.dispatchEvent(new CustomEvent("codebase_initialized"));
+    const triggers = {
+      direct: [],
+      url_change_history: [],
+      url_change_polling: [],
+      dom_change: [],
+      callback: [],
+      polling: [],
+      api: [],
+    };
+    Project.data.pages.forEach((pageData) => {
+      const page = new Page(pageData, Project.data.iid);
+      triggers[page.data.trigger].push(page);
+    });
+    Object.keys(triggers).forEach((trigger) => {
+      triggers[trigger].forEach((page) => {
+        page.run();
+        if (
+          trigger === "url_change_history" ||
+          trigger === "url_change_polling"
+        ) {
+          Tools.urlChanged(trigger.replace("url_change_", ""), () =>
+            page.run()
+          );
+        } else if (trigger === "dom_change") {
+          Tools.domChanged(() => page.run());
+        } else if (trigger === "callback") {
+          const activate = (shouldActivate) =>
+            shouldActivate === false ? page.setInactive() : page.run();
+          // var activate = function (shouldActivate) {
+          //   if (shouldActivate === false) {
+          //     page.setInactive();
+          //     return;
+          //   }
+          //   page.run();
+          // };
+          const pageInfo = { iid: page.data.iid };
+          var codebaseTools = Tools;
+          eval(
+            "(function(activate, page, codebaseTools){ " +
+              page.data.trigger_js +
+              " })(activate, pageInfo, codebaseTools)"
+          );
+          // eval(
+          //   `(function(activate, page, codebaseTools) { ${page.data.trigger_js} })(activate, pageInfo, codebaseTools)`
+          // );
+        }
+      });
+    });
+    // Push previously set goals
+    Script.formerlyPushedGoals.forEach((pushedCall) =>
+      w.codebase.push(pushedCall)
+    );
+    // Setup click listener for codebase goals if not already set
+    if (!w.codebaseClickListener) {
+      w.codebaseClickListener = true;
+      d.addEventListener(
+        "click",
+        (e) => {
+          const clickedElem = e.target;
+          const clickGoals = Script.getActiveClickGoals();
+          const activeGoalIds = clickGoals.map((goal) => goal.iid);
+          clickGoals.forEach((goal) => {
+            if (clickedElem.closest(goal.css_selector)) {
+              new Goal(goal).trigger();
+            }
+          });
+          if (clickedElem.hasAttribute("data-codebase-clickgoals")) {
+            const goalIdsFormAttr = clickedElem
+              .getAttribute("data-codebase-clickgoals")
+              .split(",");
+            goalIdsFormAttr.forEach((goalId) => {
+              if (activeGoalIds.includes(goalId)) {
+                new Goal(Script.getGoalById(goalId)).trigger();
+              }
+            });
+          }
+        },
+        true
+      );
+    }
+  };
+  if (!Script.projectData.run_only_on_reinit) {
+    // console.log("Running main script");
+    // STEP 1: Run the main script
+    Script.run();
+  }
+})(window, document, console);
+// # sourceURL=conversion.js

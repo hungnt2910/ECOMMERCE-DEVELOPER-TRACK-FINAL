@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<!-- saved from url=(0179)https://im8health.com/web-pixels@1d2a099fw23dfb22ep557258f5m7a2edbae/custom/web-pixel-158302375@1/sandbox/modern/products/essentials?variant=47315076022439&selling_plan=2948432039 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <title>IM8 Daily Ultimate Essentials: 92 Nutrients in One Delicious Drink – IM8 Health</title>
+    <script async="" src="./pixel.min.js.download"></script><script src="./s1d2a099fw23dfb22ep557258f5m7a2edbaem.js.download"></script>
+
+    <script type="text/javascript">
+  (function(shopify) {shopify.extend('WebPixel::Render', function(api) {
+var analytics=api.analytics,browser=api.browser,init=api.init;
+// ===== mgln.ai pixel via Shopify Custom Pixel =====
+// 1) Load mgln library safely + queue before it finishes loading
+(function (w, d, n) {
+  if (w.MAI) return;
+  w.MAI = w.MAI || { emit: function () { (w.MAI.q = w.MAI.q || []).push(arguments); } };
+  const e = d.createElement(n);
+  e.async = 1;
+  e.src = 'https://cdn.mgln.ai/pixel.min.js';
+  const s = d.getElementsByTagName(n)[0];
+  s.parentNode.insertBefore(e, s);
+})(window, document, 'script');
+
+// 2) Configure your pixel token (REPLACE THIS)
+MAI.emit('conf', '0199e4cb2b23799e9912bdc610d80cc7');
+
+// 3) Subscribe to Shopify's standard "product_added_to_cart" event
+//    Docs: analytics.subscribe('product_added_to_cart', cb) and payload fields in event.data.cartLine
+//    https://shopify.dev/docs/api/web-pixels-api/standard-events/product_added_to_cart
+analytics.subscribe('product_added_to_cart', (event) => {
+  try {
+    const line = event?.data?.cartLine;
+    if (!line) return;
+
+    const variant = line.merchandise;               // ProductVariant
+    const product = variant?.product;               // Product object
+    const qty     = Number(line.quantity || 1);
+
+    // Prefer unit price on the variant; fallback to line total ÷ qty (Shopify MoneyV2 amount is a string)
+    const unitPriceStr = variant?.price?.amount ??
+                         (qty > 0 ? String(Number(line?.cost?.totalAmount?.amount || 0) / qty) : "0");
+    const unitPrice = Number(unitPriceStr) || 0;
+
+    // Currency from variant price if available, else from line total
+    const currency = variant?.price?.currencyCode || line?.cost?.totalAmount?.currencyCode || 'USD';
+
+    // Emit mgln addToCart in your expected schema
+    MAI.emit('addToCart', unitPrice, currency, qty, {
+      productId:    product?.id || '',
+      productName:  product?.title || '',
+      productType:  product?.type || '',
+      productVendor: product?.vendor || '',
+      variantId:    variant?.id || '',
+      variantName:  variant?.title || ''
+    });
+  } catch (err) {
+    // Avoid breaking other pixels
+    console.warn('[mgln-ai] addToCart emit failed', err);
+  }
+});
+
+});})(self.webPixelsManager.createShopifyExtend('158302375', 'custom'));
+
+</script>
+
+  </head>
+  <body>
+
+</body></html>
